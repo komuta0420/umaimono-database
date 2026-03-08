@@ -23,21 +23,37 @@ let currentFilter = {
 // ────────────────────────────────────────
 async function loadData() {
   try {
-    [stores, genres] = await Promise.all([
-      DRIVE.driveReadJson('db.json'),
-      DRIVE.driveReadJson('genres.json'),
-    ]);
-
-    // genres.json が空の場合、ローカルの genres.json から初期データを投入
-    if (!genres || genres.length === 0) {
-      const res = await fetch('./genres.json');
-      genres = await res.json();
-      await DRIVE.driveWriteJson('genres.json', genres);
+    if (AUTH.isLoggedIn()) {
+      // ────────────────────────────────────────
+      // オーナー: Drive API（OAuth）で読み込み
+      // ────────────────────────────────────────
+      [stores, genres] = await Promise.all([
+        DRIVE.driveReadJson('db.json'),
+        DRIVE.driveReadJson('genres.json'),
+      ]);
+      // genres.json が空の場合、ローカルの初期データを投入
+      if (!genres || genres.length === 0) {
+        const res = await fetch('./genres.json');
+        genres = await res.json();
+        await DRIVE.driveWriteJson('genres.json', genres);
+      }
+    } else {
+      // ────────────────────────────────────────
+      // ビューア: 公開 Drive ファイルを読み込み
+      // ────────────────────────────────────────
+      [stores, genres] = await Promise.all([
+        DRIVE.driveReadJsonPublic('db.json'),
+        DRIVE.driveReadJsonPublic('genres.json'),
+      ]);
+      // 公開設定未完了の場合は静的 genres.json を使用
+      if (!genres || genres.length === 0) {
+        const res = await fetch('./genres.json');
+        genres = await res.json();
+      }
     }
 
-    // stores が null/undefined の場合は空配列
     if (!stores) stores = [];
-
+    if (!genres) genres = [];
     return true;
   } catch (e) {
     console.error('データロードエラー:', e);

@@ -121,5 +121,17 @@ const AUTH = (() => {
     return currentToken !== null && currentToken.expires_at > Date.now();
   }
 
-  return { init, login, logout, getAccessToken, isLoggedIn };
+  // ────────────────────────────────────────
+  // ログイン中のユーザー情報を取得
+  // ────────────────────────────────────────
+  async function getUserInfo() {
+    const token = await getAccessToken();
+    const res = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { 'Authorization': `Bearer ${token}` },
+    });
+    if (!res.ok) throw new Error('ユーザー情報の取得に失敗しました');
+    return await res.json();
+  }
+
+  return { init, login, logout, getAccessToken, isLoggedIn, getUserInfo };
 })();

@@ -213,6 +213,9 @@
     }
     .fab:hover { background: var(--accent-hover); transform: scale(1.05); }
 
+    /* ─── オーナー専用要素（未ログイン時は非表示）─── */
+    .owner-only { display: none; }
+
     /* ─── Detail Screen ─── */
     #screen-detail { background: var(--bg); }
     .detail-content { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: 80px; }
@@ -482,7 +485,11 @@
 <div id="screen-list" class="screen active">
   <div class="header">
     <div class="header-title">うまそうな店たち</div>
-    <button class="header-btn" onclick="showScreen('genres')" title="ジャンル管理">⚙️</button>
+    <div style="display:flex;gap:4px;align-items:center;">
+      <button class="header-btn" id="login-btn" onclick="handleLoginBtn()" title="ログイン">👤</button>
+      <button class="header-btn" onclick="openSettingsModal()" title="設定">🔑</button>
+      <button class="header-btn" onclick="showScreen('genres')" title="ジャンル管理">⚙️</button>
+    </div>
   </div>
 
   <!-- 検索バー -->
@@ -510,7 +517,7 @@
     </div>
   </div>
 
-  <button class="fab" onclick="showScreen('register')">＋</button>
+  <button class="fab owner-only" id="fab-add" onclick="showScreen('register')">＋</button>
 </div>
 
 <!-- フィルタードロワー -->
@@ -593,7 +600,7 @@
     <div class="detail-col-right" id="detail-col-right"></div>
   </div>
 
-  <div class="detail-actions">
+  <div class="detail-actions owner-only">
     <button class="btn btn-outline" style="flex:2;" onclick="openEditForm()">✏️ 編集・レビュー</button>
     <button class="btn btn-danger" style="flex:1;" onclick="confirmDeleteStore()">🗑️ 削除</button>
   </div>
@@ -860,12 +867,69 @@
   </div>
 </div>
 
+<!-- ─── 設定モーダル ─── -->
+<div class="modal-overlay" id="settings-modal" style="display:none;">
+  <div class="modal" style="max-width:480px;">
+    <div class="modal-title">設定</div>
+
+    <!-- ログイン状態 -->
+    <div id="settings-login-status" style="margin-bottom:16px; padding:10px 12px; border-radius:8px; font-size:13px; background:var(--color-surface);"></div>
+
+    <!-- オーナー設定 -->
+    <div style="font-size:12px; font-weight:bold; color:var(--color-accent); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.05em;">オーナー設定</div>
+    <div class="form-group">
+      <label class="form-label">オーナーの Google メールアドレス</label>
+      <input type="email" id="s-owner-email" class="form-input" placeholder="example@gmail.com">
+      <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">設定したアドレスのみ編集機能が使えます。ここでの入力はこのブラウザにのみ保存されます。</div>
+    </div>
+
+    <!-- AI機能 APIキー -->
+    <div style="font-size:12px; font-weight:bold; color:var(--color-accent); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.05em;">AI機能（任意）</div>
+    <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">未入力でも閲覧・手動登録は使えます。スクショ解析・店名検索にはGeminiとJinaが必要です。</p>
+
+    <div class="form-group">
+      <label class="form-label">Gemini API キー</label>
+      <input type="password" id="s-gemini-key" class="form-input" placeholder="AIza...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Gemini API キー（無料枠・画像認識用）</label>
+      <input type="password" id="s-gemini-free-key" class="form-input" placeholder="AIza...">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Jina AI API キー</label>
+      <input type="password" id="s-jina-key" class="form-input" placeholder="jina_...">
+    </div>
+
+    <!-- Drive フォルダID（オーナー向け表示） -->
+    <div id="settings-folder-section" style="display:none; margin-top:16px;">
+      <div style="font-size:12px; font-weight:bold; color:var(--color-accent); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.05em;">Drive フォルダID（ビューア公開用）</div>
+      <p style="font-size:12px; color:var(--text-muted); margin-bottom:8px;">この値を <code>config.example.js</code> の <code>DB_FOLDER_ID</code> に設定してコミットすると、ビューアがDBを閲覧できます。</p>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input type="text" id="s-folder-id" class="form-input" readonly style="font-size:12px; font-family:monospace;">
+        <button class="btn btn-secondary" onclick="copyFolderId()" style="white-space:nowrap; font-size:12px;">コピー</button>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:20px;">
+      <button class="btn btn-secondary" onclick="closeSettingsModal()">閉じる</button>
+      <button class="btn btn-primary" onclick="saveSettings()">保存</button>
+    </div>
+  </div>
+</div>
+
 <!-- ─── Toast ─── -->
 <div class="toast" id="error-toast"></div>
 <div class="toast" id="success-toast"></div>
 
 <!-- ─── Scripts ─── -->
-<script src="config.js"></script>
+<script src="config.example.js"></script>
+<script>
+// localStorage の設定で CONFIG_DEFAULT を上書きして CONFIG を構築
+(function() {
+  const saved = JSON.parse(localStorage.getItem('restaurant_db_config') || '{}');
+  window.CONFIG = Object.assign({}, CONFIG_DEFAULT, saved);
+})();
+</script>
 <script src="auth.js"></script>
 <script src="drive.js"></script>
 <script src="geo.js"></script>
@@ -889,31 +953,133 @@ let filterGenreIds = [];
 // ────────────────────────────────────────
 async function init() {
   try {
-    // GIS スクリプトロード確認
+    // GIS スクリプトロード確認・保存済みトークン復元
     await AUTH.init();
 
-    // 未ログインならログイン
-    if (!AUTH.isLoggedIn()) {
-      await AUTH.login();
+    if (AUTH.isLoggedIn()) {
+      // ログイン済み（オーナー）: Drive初期化してデータロード
+      await DRIVE.driveInit();
     }
 
-    // Drive初期化・データロード
-    await DRIVE.driveInit();
+    // ログイン・未ログインどちらもデータロードを試みる
     await loadData();
 
-    // フィルタージャンルチップを生成
     buildFilterGenreChips();
-
-    // 一覧描画
     await renderList();
 
     document.getElementById('skeleton-list').style.display = 'none';
     document.getElementById('accordion-list').style.display = 'block';
+
+    // ログイン状態に応じてUIを更新
+    updateOwnerUI();
   } catch (e) {
     document.getElementById('skeleton-list').style.display = 'none';
     showError('起動に失敗しました: ' + e.message);
     console.error(e);
   }
+}
+
+// ────────────────────────────────────────
+// ログイン状態に応じてオーナー専用UIを表示/非表示
+// ────────────────────────────────────────
+function updateOwnerUI() {
+  const isOwner = AUTH.isLoggedIn();
+  document.querySelectorAll('.owner-only').forEach(el => {
+    el.style.display = isOwner ? '' : 'none';
+  });
+  const loginBtn = document.getElementById('login-btn');
+  if (loginBtn) {
+    loginBtn.textContent = isOwner ? '🔓' : '👤';
+    loginBtn.title = isOwner ? 'ログアウト' : 'ログイン（編集機能を使う）';
+  }
+}
+
+// ────────────────────────────────────────
+// ログイン/ログアウトボタン
+// ────────────────────────────────────────
+async function handleLoginBtn() {
+  if (AUTH.isLoggedIn()) {
+    AUTH.logout();
+    updateOwnerUI();
+    showSuccess('ログアウトしました');
+  } else {
+    try {
+      await AUTH.login();
+      // オーナーメールアドレスを確認
+      const userInfo = await AUTH.getUserInfo();
+      if (CONFIG.OWNER_EMAIL && userInfo.email !== CONFIG.OWNER_EMAIL) {
+        AUTH.logout();
+        showError(`${userInfo.email} は編集権限がありません`);
+        return;
+      }
+      await DRIVE.driveInit();
+      await loadData();
+      buildFilterGenreChips();
+      await renderList();
+      updateOwnerUI();
+      showSuccess(`ログインしました (${userInfo.email})`);
+    } catch (e) {
+      showError('ログインに失敗しました: ' + e.message);
+    }
+  }
+}
+
+// ────────────────────────────────────────
+// 設定モーダル
+// ────────────────────────────────────────
+function openSettingsModal() {
+  // 現在の値を反映
+  document.getElementById('s-owner-email').value = CONFIG.OWNER_EMAIL || '';
+  document.getElementById('s-gemini-key').value = CONFIG.GEMINI_API_KEY || '';
+  document.getElementById('s-gemini-free-key').value = CONFIG.GEMINI_API_KEY_FREE || '';
+  document.getElementById('s-jina-key').value = CONFIG.JINA_API_KEY || '';
+
+  // ログイン状態表示
+  const statusEl = document.getElementById('settings-login-status');
+  if (AUTH.isLoggedIn()) {
+    statusEl.style.background = 'rgba(100,200,100,0.1)';
+    statusEl.textContent = '🔓 ログイン中（オーナーモード）';
+  } else {
+    statusEl.style.background = 'rgba(200,100,100,0.1)';
+    statusEl.textContent = '👤 未ログイン（閲覧のみ）';
+  }
+
+  // フォルダID表示（ログイン中のみ）
+  const folderSection = document.getElementById('settings-folder-section');
+  const folderId = DRIVE.getFolderId();
+  if (AUTH.isLoggedIn() && folderId) {
+    folderSection.style.display = 'block';
+    document.getElementById('s-folder-id').value = folderId;
+  } else {
+    folderSection.style.display = 'none';
+  }
+
+  document.getElementById('settings-modal').style.display = 'flex';
+}
+
+function closeSettingsModal() {
+  document.getElementById('settings-modal').style.display = 'none';
+}
+
+function saveSettings() {
+  const saved = {
+    OWNER_EMAIL: document.getElementById('s-owner-email').value.trim(),
+    GEMINI_API_KEY: document.getElementById('s-gemini-key').value.trim(),
+    GEMINI_API_KEY_FREE: document.getElementById('s-gemini-free-key').value.trim(),
+    JINA_API_KEY: document.getElementById('s-jina-key').value.trim(),
+  };
+  // 空の値は保存しない
+  Object.keys(saved).forEach(k => { if (!saved[k]) delete saved[k]; });
+  localStorage.setItem('restaurant_db_config', JSON.stringify(saved));
+  // CONFIG に即時反映
+  Object.assign(CONFIG, saved);
+  closeSettingsModal();
+  showSuccess('設定を保存しました');
+}
+
+function copyFolderId() {
+  const val = document.getElementById('s-folder-id').value;
+  navigator.clipboard.writeText(val).then(() => showSuccess('フォルダIDをコピーしました'));
 }
 
 // ────────────────────────────────────────

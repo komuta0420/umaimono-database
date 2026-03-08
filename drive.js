@@ -144,7 +144,10 @@ const DRIVE = (() => {
           body: form,
         }
       );
-      return await res.json();
+      const file = await res.json();
+      // 新規作成時はビューア向けに公開設定
+      await makePublic(file.id);
+      return file;
     }
   }
 
@@ -211,6 +214,58 @@ const DRIVE = (() => {
     });
   }
 
+  // ────────────────────────────────────────
+  // ファイルを anyoneWithLink で公開（ビューア向け読み取り用）
+  // ────────────────────────────────────────
+  async function makePublic(fileId) {
+    try {
+      await apiFetch(`${API_BASE}/files/${fileId}/permissions`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ type: 'anyone', role: 'reader' }),
+      });
+    } catch (e) {
+      console.warn('公開設定に失敗しました:', e.message);
+    }
+  }
+
+  // ────────────────────────────────────────
+  // JSON 読み込み（非認証・公開ファイル用）
+  // CONFIG.GOOGLE_API_KEY と CONFIG.DB_FOLDER_ID が必要
+  // ────────────────────────────────────────
+  async function driveReadJsonPublic(filename) {
+    const apiKey = CONFIG.GOOGLE_API_KEY;
+    const folderId = CONFIG.DB_FOLDER_ID;
+    if (!apiKey || !folderId || apiKey.includes('YOUR_')) return null;
+
+    const q = encodeURIComponent(
+      `name='${filename}' and '${folderId}' in parents and trashed=false`
+    );
+    const listRes = await fetch(
+      `${API_BASE}/files?q=${q}&fields=files(id)&spaces=drive&key=${apiKey}`
+    );
+    if (!listRes.ok) return null;
+    const listData = await listRes.json();
+    if (!listData.files || listData.files.length === 0) return null;
+
+    const fileId = listData.files[0].id;
+    const fileRes = await fetch(`${API_BASE}/files/${fileId}?alt=media&key=${apiKey}`);
+    if (!fileRes.ok) return null;
+    const text = await fileRes.text();
+    try {
+      return JSON.parse(text);
+    } catch (e) {
+      return null;
+    }
+  }
+
+  // ────────────────────────────────────────
+  // フォルダIDを返す（設定画面での表示用）
+  // ────────────────────────────────────────
+  function getFolderId() {
+    return dbFolderId;
+  }
+
   return {
     driveInit,
     driveReadJson,
@@ -218,5 +273,8 @@ const DRIVE = (() => {
     driveUploadImage,
     driveGetImageUrl,
     driveDeleteFile,
+    driveReadJsonPublic,
+    makePublic,
+    getFolderId,
   };
 })();
