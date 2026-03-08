@@ -1,0 +1,1741 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>うまそうな店たち</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Noto+Serif+JP:wght@400;600;700&family=Noto+Sans+JP:wght@400;500&display=swap">
+  <style>
+    /* ─── CSS Variables ─── */
+    :root {
+      --bg: #1a1208;
+      --surface: #2d1f0e;
+      --surface2: #3d2a12;
+      --accent: #c9a84c;
+      --accent-hover: #e0bf6a;
+      --text: #f0e6d3;
+      --text-muted: #a89070;
+      --border: #4a3520;
+      --danger: #c0392b;
+      --success: #27ae60;
+      --radius: 10px;
+      --header-h: 56px;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Noto Sans JP', sans-serif;
+      font-size: 14px;
+      min-height: 100vh;
+    }
+    h1, h2, h3 { font-family: 'Noto Serif JP', serif; }
+    a { color: var(--accent); text-decoration: none; }
+    button { cursor: pointer; font-family: inherit; }
+
+    /* ─── Screen Management ─── */
+    .screen { display: none; }
+    .screen.active { display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* ─── Header ─── */
+    .header {
+      position: sticky; top: 0; z-index: 100;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      height: var(--header-h);
+      display: flex; align-items: center; padding: 0 16px; gap: 12px;
+    }
+    .header-title {
+      flex: 1;
+      font-family: 'Noto Serif JP', serif;
+      font-size: 17px; font-weight: 700;
+      color: var(--accent);
+    }
+    .header-btn {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 20px; padding: 6px;
+      border-radius: 50%; transition: color 0.2s, background 0.2s;
+    }
+    .header-btn:hover { color: var(--text); background: var(--surface2); }
+    .back-btn { font-size: 22px; }
+
+    /* ─── Search Bar ─── */
+    .search-bar {
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: 10px 16px;
+      display: flex; gap: 8px; align-items: center;
+    }
+    .search-input-wrap { flex: 1; position: relative; }
+    .search-input {
+      width: 100%;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 8px 36px 8px 14px;
+      color: var(--text);
+      font-size: 14px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--text-muted); }
+    .search-clear {
+      position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+      background: none; border: none; color: var(--text-muted);
+      font-size: 16px; padding: 2px; display: none;
+    }
+    .search-input:not(:placeholder-shown) ~ .search-clear { display: block; }
+    .filter-btn {
+      background: none; border: 1px solid var(--border);
+      border-radius: 20px; padding: 7px 12px;
+      color: var(--text-muted); font-size: 13px;
+      transition: all 0.2s;
+    }
+    .filter-btn.active { border-color: var(--accent); color: var(--accent); }
+
+    /* ─── Filter Drawer ─── */
+    .filter-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6); z-index: 200;
+    }
+    .filter-overlay.open { display: block; }
+    .filter-drawer {
+      position: fixed; top: 0; right: -340px; bottom: 0; width: 320px;
+      background: var(--surface); border-left: 1px solid var(--border);
+      padding: 20px 16px; overflow-y: auto; z-index: 201;
+      transition: right 0.3s ease;
+    }
+    .filter-drawer.open { right: 0; }
+    .filter-section { margin-bottom: 20px; }
+    .filter-label {
+      font-size: 12px; color: var(--text-muted);
+      text-transform: uppercase; letter-spacing: 1px;
+      margin-bottom: 8px; display: block;
+    }
+    .filter-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .chip {
+      padding: 5px 12px; border-radius: 20px;
+      border: 1px solid var(--border);
+      background: none; color: var(--text-muted);
+      font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .chip.active { border-color: var(--accent); color: var(--accent); background: rgba(201,168,76,0.1); }
+    .filter-input {
+      width: 100%; background: var(--bg);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 8px 12px; color: var(--text); font-size: 14px;
+    }
+    select.filter-input { appearance: none; }
+    .filter-actions { display: flex; gap: 8px; margin-top: 20px; }
+    .btn {
+      flex: 1; padding: 10px 16px; border-radius: var(--radius);
+      font-size: 14px; font-weight: 500; border: none;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--accent); color: #1a1208; }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-secondary { background: var(--surface2); color: var(--text); }
+    .btn-secondary:hover { background: var(--border); }
+    .btn-danger { background: var(--danger); color: #fff; }
+    .btn-danger:hover { background: #e74c3c; }
+    .btn-outline {
+      border: 1px solid var(--accent); color: var(--accent);
+      background: none;
+    }
+    .btn-outline:hover { background: rgba(201,168,76,0.1); }
+
+    /* ─── Accordion List ─── */
+    .list-content { flex: 1; padding: 8px 0 80px; overflow-y: auto; }
+    .accordion-group { border-bottom: 1px solid var(--border); }
+    .accordion-header {
+      display: flex; align-items: center; gap: 8px;
+      padding: 12px 16px; cursor: pointer;
+      user-select: none; background: var(--surface);
+      transition: background 0.2s;
+    }
+    .accordion-header:hover { background: var(--surface2); }
+    .accordion-emoji { font-size: 18px; }
+    .accordion-name { flex: 1; font-weight: 500; font-size: 15px; }
+    .accordion-count {
+      font-size: 12px; color: var(--text-muted);
+      background: var(--surface2); border-radius: 10px;
+      padding: 2px 8px;
+    }
+    .accordion-arrow { color: var(--text-muted); font-size: 12px; transition: transform 0.2s; }
+    .accordion-group.open .accordion-arrow { transform: rotate(90deg); }
+    .accordion-body { display: none; }
+    .accordion-group.open .accordion-body { display: block; }
+
+    /* ─── Store Row ─── */
+    .store-row {
+      display: flex; align-items: center;
+      padding: 10px 16px 10px 42px;
+      border-top: 1px solid var(--border);
+      cursor: pointer; gap: 8px;
+      transition: background 0.15s;
+    }
+    .store-row:hover { background: var(--surface2); }
+    .store-name { flex: 1; font-size: 14px; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .store-station { font-size: 12px; color: var(--text-muted); white-space: nowrap; }
+    .store-score {
+      font-size: 12px; color: var(--accent);
+      white-space: nowrap;
+    }
+    .store-want { font-size: 13px; white-space: nowrap; }
+    .store-visited { font-size: 13px; }
+
+    /* 検索時フラット表示 */
+    .flat-store-row {
+      display: flex; align-items: center;
+      padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer; gap: 8px;
+      transition: background 0.15s;
+    }
+    .flat-store-row:hover { background: var(--surface2); }
+    .flat-genre-badge {
+      font-size: 11px; padding: 2px 8px;
+      border-radius: 10px; background: var(--surface2);
+      color: var(--text-muted); white-space: nowrap;
+    }
+
+    /* ─── FAB ─── */
+    .fab {
+      position: fixed; bottom: 24px; right: 24px;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--accent); color: #1a1208;
+      font-size: 28px; border: none;
+      box-shadow: 0 4px 16px rgba(201,168,76,0.4);
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.2s; z-index: 50;
+    }
+    .fab:hover { background: var(--accent-hover); transform: scale(1.05); }
+
+    /* ─── Detail Screen ─── */
+    #screen-detail { background: var(--bg); }
+    .detail-content { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: 80px; }
+    .detail-name {
+      font-family: 'Noto Serif JP', serif;
+      font-size: 24px; font-weight: 700;
+      margin-bottom: 8px; line-height: 1.3;
+    }
+    .detail-genres { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+    .genre-tag {
+      font-size: 12px; padding: 3px 10px;
+      border-radius: 12px; border: 1px solid currentColor;
+    }
+    .want-badge { font-size: 16px; }
+    .external-links {
+      display: flex; flex-wrap: wrap; gap: 8px;
+      margin: 16px 0;
+    }
+    .ext-link {
+      padding: 8px 16px; border-radius: var(--radius);
+      border: 1px solid var(--border);
+      color: var(--text); font-size: 13px;
+      transition: all 0.2s;
+    }
+    .ext-link:hover { border-color: var(--accent); color: var(--accent); }
+    .section-title {
+      font-size: 12px; color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 6px; margin: 20px 0 12px;
+      letter-spacing: 1px;
+    }
+    .info-row { display: flex; gap: 8px; margin-bottom: 8px; font-size: 14px; }
+    .info-label { color: var(--text-muted); min-width: 80px; }
+    .tags-list { display: flex; flex-wrap: wrap; gap: 6px; }
+    .tag { font-size: 12px; color: var(--text-muted); }
+    .tag::before { content: '#'; }
+    .memo-text { font-size: 14px; color: var(--text); line-height: 1.6; }
+
+    /* ─── Review Section ─── */
+    .review-score { font-size: 28px; color: var(--accent); font-weight: 700; }
+    .star-display { font-size: 16px; }
+    .review-date { font-size: 12px; color: var(--text-muted); }
+    .review-text { font-size: 14px; line-height: 1.7; margin: 8px 0; }
+    .review-photos {
+      display: flex; gap: 8px; overflow-x: auto;
+      padding: 8px 0; scroll-snap-type: x mandatory;
+    }
+    .review-photo {
+      width: 120px; height: 120px; object-fit: cover;
+      border-radius: var(--radius); flex-shrink: 0;
+      scroll-snap-align: start; cursor: pointer;
+    }
+    .detail-actions {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface);
+      border-top: 1px solid var(--border);
+      padding: 12px 16px; display: flex; gap: 10px;
+    }
+
+    /* ─── Photo Lightbox ─── */
+    .lightbox {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.95); z-index: 500;
+      align-items: center; justify-content: center;
+    }
+    .lightbox.open { display: flex; }
+    .lightbox img { max-width: 100%; max-height: 100%; object-fit: contain; }
+    .lightbox-close {
+      position: absolute; top: 16px; right: 16px;
+      font-size: 32px; color: #fff; background: none; border: none;
+    }
+
+    /* ─── Form Screen ─── */
+    #screen-form { background: var(--bg); }
+    .form-content { flex: 1; overflow-y: auto; padding: 16px; padding-bottom: 100px; }
+    .form-section { margin-bottom: 24px; }
+    .form-section-title {
+      font-family: 'Noto Serif JP', serif;
+      font-size: 16px; color: var(--accent);
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px; margin-bottom: 14px;
+    }
+    .form-group { margin-bottom: 14px; }
+    .form-label { display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 5px; }
+    .form-input {
+      width: 100%; background: var(--surface);
+      border: 1px solid var(--border); border-radius: var(--radius);
+      padding: 10px 12px; color: var(--text); font-size: 14px;
+      font-family: inherit; transition: border-color 0.2s; outline: none;
+    }
+    .form-input:focus { border-color: var(--accent); }
+    textarea.form-input { resize: vertical; min-height: 80px; line-height: 1.6; }
+    .form-row { display: flex; gap: 10px; }
+    .form-row .form-group { flex: 1; }
+    .genre-select-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+    .genre-chip {
+      padding: 5px 12px; border-radius: 20px;
+      border: 1px solid var(--border);
+      background: none; color: var(--text-muted);
+      font-size: 12px; cursor: pointer; transition: all 0.2s;
+    }
+    .genre-chip.selected { border-color: var(--accent); color: var(--accent); background: rgba(201,168,76,0.1); }
+    .want-level-btns { display: flex; gap: 8px; }
+    .want-level-btn {
+      flex: 1; padding: 8px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: none;
+      color: var(--text-muted); font-size: 13px; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .want-level-btn.selected { border-color: var(--accent); color: var(--accent); background: rgba(201,168,76,0.1); }
+    .form-footer {
+      position: fixed; bottom: 0; left: 0; right: 0;
+      background: var(--surface); border-top: 1px solid var(--border);
+      padding: 12px 16px; display: flex; gap: 10px;
+    }
+
+    /* ─── Star Rating ─── */
+    .star-rating { display: flex; gap: 4px; align-items: center; flex-direction: row-reverse; justify-content: flex-end; }
+    .star-rating input { display: none; }
+    .star-rating label {
+      font-size: 28px; color: var(--border); cursor: pointer; transition: color 0.1s;
+    }
+    .star-rating input:checked ~ label,
+    .star-rating label:hover,
+    .star-rating label:hover ~ label { color: var(--accent); }
+
+    /* ─── Photo Upload ─── */
+    .photo-upload-area {
+      border: 2px dashed var(--border); border-radius: var(--radius);
+      padding: 20px; text-align: center; cursor: pointer;
+      transition: border-color 0.2s; color: var(--text-muted);
+    }
+    .photo-upload-area:hover { border-color: var(--accent); }
+    .photo-preview-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+    .photo-preview-item { position: relative; }
+    .photo-preview-item img {
+      width: 80px; height: 80px; object-fit: cover;
+      border-radius: var(--radius);
+    }
+    .photo-delete-btn {
+      position: absolute; top: -6px; right: -6px;
+      width: 20px; height: 20px; border-radius: 50%;
+      background: var(--danger); color: #fff;
+      font-size: 12px; border: none; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    /* ─── Register Flow ─── */
+    #screen-register { background: var(--bg); }
+    .register-methods { padding: 24px 16px; display: flex; flex-direction: column; gap: 12px; }
+    .register-method-btn {
+      display: flex; align-items: center; gap: 14px;
+      padding: 16px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--surface);
+      color: var(--text); font-size: 15px; cursor: pointer;
+      transition: all 0.2s; text-align: left;
+    }
+    .register-method-btn:hover { border-color: var(--accent); background: var(--surface2); }
+    .register-method-icon { font-size: 28px; }
+    .register-method-desc { font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+    .ai-loading {
+      display: none; flex-direction: column;
+      align-items: center; justify-content: center;
+      padding: 60px 16px; gap: 16px;
+    }
+    .ai-loading.visible { display: flex; }
+    .spinner {
+      width: 40px; height: 40px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .search-candidates { padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .candidate-card {
+      padding: 12px; border-radius: var(--radius);
+      border: 1px solid var(--border); background: var(--surface);
+      cursor: pointer; transition: all 0.2s;
+    }
+    .candidate-card:hover { border-color: var(--accent); }
+    .candidate-name { font-weight: 600; margin-bottom: 4px; }
+    .candidate-info { font-size: 12px; color: var(--text-muted); }
+    .candidate-reason { font-size: 11px; color: var(--accent); margin-top: 4px; }
+
+    /* ─── Genre Management ─── */
+    #screen-genres { background: var(--bg); }
+    .genre-list { padding: 8px 16px; }
+    .genre-item {
+      display: flex; align-items: center; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid var(--border);
+    }
+    .genre-color-dot {
+      width: 12px; height: 12px; border-radius: 50%; flex-shrink: 0;
+    }
+    .genre-item-name { flex: 1; }
+    .genre-order-btns { display: flex; flex-direction: column; gap: 2px; }
+    .genre-order-btn {
+      background: none; border: none; color: var(--text-muted);
+      font-size: 16px; cursor: pointer; padding: 2px;
+      transition: color 0.2s;
+    }
+    .genre-order-btn:hover { color: var(--text); }
+    .genre-edit-btn, .genre-del-btn {
+      background: none; border: none; font-size: 16px;
+      cursor: pointer; padding: 4px;
+    }
+    .genre-edit-btn { color: var(--accent); }
+    .genre-del-btn { color: var(--danger); }
+
+    /* ─── Modal ─── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0;
+      background: rgba(0,0,0,0.7); z-index: 300;
+      align-items: center; justify-content: center; padding: 20px;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: var(--surface); border-radius: var(--radius);
+      padding: 20px; width: 100%; max-width: 400px;
+      border: 1px solid var(--border);
+    }
+    .modal-title { font-size: 16px; font-weight: 600; margin-bottom: 16px; }
+    .modal-actions { display: flex; gap: 8px; margin-top: 16px; }
+
+    /* ─── Toast ─── */
+    .toast {
+      position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px);
+      padding: 10px 20px; border-radius: 20px;
+      font-size: 14px; opacity: 0; transition: all 0.3s; z-index: 400;
+      pointer-events: none; white-space: nowrap;
+    }
+    .toast.visible { opacity: 1; transform: translateX(-50%) translateY(0); }
+    #error-toast { background: var(--danger); color: #fff; }
+    #success-toast { background: var(--success); color: #fff; }
+
+    /* ─── Skeleton ─── */
+    .skeleton {
+      background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.2s infinite;
+      border-radius: var(--radius);
+    }
+    @keyframes shimmer { to { background-position: -200% 0; } }
+    .skeleton-row { height: 44px; margin-bottom: 4px; }
+
+    /* ─── PC Layout (768px+) ─── */
+    @media (min-width: 768px) {
+      .detail-content {
+        display: grid; grid-template-columns: 6fr 4fr;
+        gap: 24px; max-width: 900px; margin: 0 auto;
+        padding: 24px; padding-bottom: 80px;
+      }
+      .detail-col-left {}
+      .detail-col-right {}
+      .register-methods { max-width: 480px; margin: 0 auto; }
+      .search-candidates { max-width: 600px; margin: 0 auto; }
+      .form-content { max-width: 680px; margin: 0 auto; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════
+     一覧画面
+═══════════════════════════════════════ -->
+<div id="screen-list" class="screen active">
+  <div class="header">
+    <div class="header-title">うまそうな店たち</div>
+    <button class="header-btn" onclick="showScreen('genres')" title="ジャンル管理">⚙️</button>
+  </div>
+
+  <!-- 検索バー -->
+  <div class="search-bar">
+    <div class="search-input-wrap">
+      <input type="text" id="search-input" class="search-input"
+        placeholder="店名・駅名・エリアで検索…"
+        oninput="onSearchInput(this.value)">
+      <button class="search-clear" onclick="clearSearch()">✕</button>
+    </div>
+    <button id="filter-toggle" class="filter-btn" onclick="toggleFilterDrawer()">🔽 絞込</button>
+  </div>
+
+  <!-- 一覧コンテンツ -->
+  <div class="list-content" id="list-content">
+    <div id="skeleton-list">
+      <div class="skeleton skeleton-row"></div>
+      <div class="skeleton skeleton-row"></div>
+      <div class="skeleton skeleton-row"></div>
+    </div>
+    <div id="accordion-list" style="display:none;"></div>
+    <div id="flat-list" style="display:none;"></div>
+    <div id="empty-message" style="display:none; text-align:center; padding:40px 16px; color:var(--text-muted);">
+      店舗が見つかりませんでした
+    </div>
+  </div>
+
+  <button class="fab" onclick="showScreen('register')">＋</button>
+</div>
+
+<!-- フィルタードロワー -->
+<div class="filter-overlay" id="filter-overlay" onclick="closeFilterDrawer()"></div>
+<div class="filter-drawer" id="filter-drawer">
+  <h3 style="margin-bottom:16px; font-size:16px;">絞り込み</h3>
+
+  <div class="filter-section">
+    <span class="filter-label">ジャンル</span>
+    <div class="filter-chips" id="filter-genres"></div>
+  </div>
+
+  <div class="filter-section">
+    <span class="filter-label">駅名（徒歩15分以内）</span>
+    <input type="text" class="filter-input" id="filter-station"
+      placeholder="例: 池袋" oninput="updateFilter()">
+  </div>
+
+  <div class="filter-section">
+    <span class="filter-label">予算</span>
+    <div class="filter-chips">
+      <button class="chip" data-budget="" onclick="selectChip(this,'budget')">すべて</button>
+      <button class="chip" data-budget="low" onclick="selectChip(this,'budget')">〜¥1,000</button>
+      <button class="chip" data-budget="mid" onclick="selectChip(this,'budget')">¥1K〜3K</button>
+      <button class="chip" data-budget="high" onclick="selectChip(this,'budget')">¥3K〜8K</button>
+      <button class="chip" data-budget="premium" onclick="selectChip(this,'budget')">¥8K〜</button>
+    </div>
+  </div>
+
+  <div class="filter-section">
+    <span class="filter-label">訪問状態</span>
+    <div class="filter-chips">
+      <button class="chip active" data-visited="all" onclick="selectChip(this,'visited')">すべて</button>
+      <button class="chip" data-visited="visited" onclick="selectChip(this,'visited')">訪問済み</button>
+      <button class="chip" data-visited="unvisited" onclick="selectChip(this,'visited')">未訪問</button>
+    </div>
+  </div>
+
+  <div class="filter-section">
+    <span class="filter-label">行きたい度</span>
+    <div class="filter-chips">
+      <button class="chip active" data-want="all" onclick="selectChip(this,'want')">すべて</button>
+      <button class="chip" data-want="1" onclick="selectChip(this,'want')">⭐以上</button>
+      <button class="chip" data-want="2" onclick="selectChip(this,'want')">⭐⭐のみ</button>
+    </div>
+  </div>
+
+  <div class="filter-section">
+    <span class="filter-label">並び替え</span>
+    <select class="filter-input" id="filter-sort" onchange="updateFilter()">
+      <option value="added_desc">追加日（新しい順）</option>
+      <option value="added_asc">追加日（古い順）</option>
+      <option value="score_desc">スコア（高い順）</option>
+      <option value="score_asc">スコア（低い順）</option>
+    </select>
+  </div>
+
+  <div class="filter-section" style="display:flex; align-items:center; gap:10px;">
+    <input type="checkbox" id="filter-tags" onchange="updateFilter()">
+    <label for="filter-tags" style="font-size:13px;">タグも検索対象に含める</label>
+  </div>
+
+  <div class="filter-actions">
+    <button class="btn btn-secondary" onclick="resetFilter()">リセット</button>
+    <button class="btn btn-primary" onclick="closeFilterDrawer()">適用</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     詳細画面
+═══════════════════════════════════════ -->
+<div id="screen-detail" class="screen">
+  <div class="header">
+    <button class="header-btn back-btn" onclick="showScreen('list')">‹</button>
+    <div class="header-title"></div>
+  </div>
+
+  <div class="detail-content" id="detail-content">
+    <div class="detail-col-left" id="detail-col-left"></div>
+    <div class="detail-col-right" id="detail-col-right"></div>
+  </div>
+
+  <div class="detail-actions">
+    <button class="btn btn-outline" style="flex:2;" onclick="openEditForm()">✏️ 編集・レビュー</button>
+    <button class="btn btn-danger" style="flex:1;" onclick="confirmDeleteStore()">🗑️ 削除</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     登録フロー画面
+═══════════════════════════════════════ -->
+<div id="screen-register" class="screen">
+  <div class="header">
+    <button class="header-btn back-btn" onclick="showScreen('list')">‹</button>
+    <div class="header-title">店舗を登録</div>
+  </div>
+
+  <!-- 方法選択 -->
+  <div id="register-methods" class="register-methods">
+    <button class="register-method-btn" onclick="startScreenshotFlow()">
+      <span class="register-method-icon">📷</span>
+      <div>
+        <div>スクショから登録</div>
+        <div class="register-method-desc">画像をAIが解析して自動入力</div>
+      </div>
+    </button>
+    <button class="register-method-btn" onclick="startNameSearchFlow()">
+      <span class="register-method-icon">🔍</span>
+      <div>
+        <div>店名で検索して登録</div>
+        <div class="register-method-desc">店名・駅名を入力してAIが候補を提示</div>
+      </div>
+    </button>
+    <button class="register-method-btn" onclick="openFormNew()">
+      <span class="register-method-icon">✏️</span>
+      <div>
+        <div>手動で登録</div>
+        <div class="register-method-desc">空のフォームに直接入力</div>
+      </div>
+    </button>
+  </div>
+
+  <!-- スクショ選択エリア -->
+  <div id="screenshot-area" style="display:none; padding:16px;">
+    <div class="photo-upload-area" id="screenshot-drop"
+      onclick="document.getElementById('screenshot-file').click()"
+      ondrop="onScreenshotDrop(event)" ondragover="event.preventDefault()">
+      <div style="font-size:40px; margin-bottom:8px;">📷</div>
+      <div>画像をタップまたはドロップ</div>
+      <div style="font-size:12px; color:var(--text-muted); margin-top:4px;">JPG・PNG・WebP</div>
+    </div>
+    <input type="file" id="screenshot-file" accept="image/*" style="display:none"
+      onchange="onScreenshotFile(this.files[0])">
+  </div>
+
+  <!-- 名前検索エリア -->
+  <div id="name-search-area" style="display:none; padding:16px;">
+    <div class="form-group">
+      <label class="form-label">店名</label>
+      <input type="text" id="search-store-name" class="form-input" placeholder="例: キアズマ珈琲">
+    </div>
+    <div class="form-group">
+      <label class="form-label">駅名（任意）</label>
+      <input type="text" id="search-store-station" class="form-input" placeholder="例: 池袋">
+    </div>
+    <button class="btn btn-primary" style="width:100%;" onclick="doNameSearch()">🔍 検索</button>
+  </div>
+
+  <!-- AI ローディング -->
+  <div class="ai-loading" id="ai-loading">
+    <div class="spinner"></div>
+    <div id="ai-loading-msg">AIが解析中…</div>
+  </div>
+
+  <!-- 候補リスト -->
+  <div id="search-candidates" class="search-candidates" style="display:none;"></div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     編集・登録フォーム画面
+═══════════════════════════════════════ -->
+<div id="screen-form" class="screen">
+  <div class="header">
+    <button class="header-btn back-btn" id="form-back-btn" onclick="onFormBack()">‹</button>
+    <div class="header-title" id="form-title">店舗を登録</div>
+  </div>
+
+  <div class="form-content">
+    <input type="hidden" id="form-store-id">
+
+    <!-- 店舗情報 -->
+    <div class="form-section">
+      <div class="form-section-title">基本情報</div>
+
+      <div class="form-group">
+        <label class="form-label">店名 *</label>
+        <input type="text" id="f-name" class="form-input" placeholder="例: キアズマ珈琲">
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">ジャンル（複数選択可）</label>
+        <div class="genre-select-grid" id="f-genres"></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">最寄り駅</label>
+          <input type="text" id="f-station" class="form-input" placeholder="例: 池袋">
+        </div>
+        <div class="form-group">
+          <label class="form-label">エリア</label>
+          <input type="text" id="f-area" class="form-input" placeholder="例: 東池袋">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">住所</label>
+        <input type="text" id="f-address" class="form-input" placeholder="例: 東京都豊島区..."
+          onblur="silentGeocode(this.value.trim())">
+        <button class="btn btn-secondary" style="margin-top:6px; width:100%; font-size:13px;"
+          onclick="doGeocode()">📍 位置情報を取得（住所→緯度経度）</button>
+      </div>
+      <div class="form-row" style="display:none;" id="f-latlng-row">
+        <div class="form-group">
+          <label class="form-label">緯度</label>
+          <input type="number" id="f-lat" class="form-input" step="0.000001" readonly>
+        </div>
+        <div class="form-group">
+          <label class="form-label">経度</label>
+          <input type="number" id="f-lng" class="form-input" step="0.000001" readonly>
+        </div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">営業時間</label>
+          <input type="text" id="f-hours" class="form-input" placeholder="10:30-19:00">
+        </div>
+        <div class="form-group">
+          <label class="form-label">定休日</label>
+          <input type="text" id="f-closed" class="form-input" placeholder="月曜">
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 外部リンク -->
+    <div class="form-section">
+      <div class="form-section-title">外部リンク</div>
+      <div class="form-group">
+        <label class="form-label">食べログ URL</label>
+        <input type="url" id="f-url-tabelog" class="form-input" placeholder="https://tabelog.com/...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Instagram URL</label>
+        <input type="url" id="f-url-instagram" class="form-input" placeholder="https://instagram.com/...">
+      </div>
+      <div class="form-group">
+        <label class="form-label">公式サイト URL</label>
+        <input type="url" id="f-url-official" class="form-input" placeholder="https://...">
+      </div>
+    </div>
+
+    <!-- タグ・メモ -->
+    <div class="form-section">
+      <div class="form-section-title">タグ・メモ</div>
+      <div class="form-group">
+        <label class="form-label">タグ（スペース区切り）</label>
+        <input type="text" id="f-tags" class="form-input" placeholder="一人OK 読書向き 禁煙">
+      </div>
+      <div class="form-group">
+        <label class="form-label">メモ</label>
+        <textarea id="f-memo" class="form-input" placeholder="特記事項など"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">行きたい度</label>
+        <div class="want-level-btns">
+          <button class="want-level-btn" data-level="0" onclick="selectWantLevel(0)">なし</button>
+          <button class="want-level-btn" data-level="1" onclick="selectWantLevel(1)">⭐ 行きたい</button>
+          <button class="want-level-btn" data-level="2" onclick="selectWantLevel(2)">⭐⭐ 絶対行きたい</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- レビュー -->
+    <div class="form-section" id="review-section">
+      <div class="form-section-title">レビュー</div>
+      <div class="form-group">
+        <label class="form-label">スコア（0〜5、0.5刻み）</label>
+        <input type="number" id="f-review-score" class="form-input"
+          min="0" max="5" step="0.5" placeholder="例: 4.0">
+      </div>
+      <div class="form-group">
+        <label class="form-label">テキスト</label>
+        <textarea id="f-review-text" class="form-input" placeholder="感想・コメント" oninput="updateReviewVisited()"></textarea>
+      </div>
+      <div class="form-group">
+        <label class="form-label">写真</label>
+        <div class="photo-upload-area" onclick="document.getElementById('review-photos-input').click()">
+          📷 写真を追加
+        </div>
+        <input type="file" id="review-photos-input" accept="image/*" multiple style="display:none"
+          onchange="onReviewPhotoAdd(this.files)">
+        <div class="photo-preview-list" id="review-photo-preview"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="form-footer">
+    <button class="btn btn-secondary" onclick="onFormBack()">キャンセル</button>
+    <button class="btn btn-primary" style="flex:2;" onclick="saveForm()">💾 保存</button>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     ジャンル管理画面
+═══════════════════════════════════════ -->
+<div id="screen-genres" class="screen">
+  <div class="header">
+    <button class="header-btn back-btn" onclick="showScreen('list')">‹</button>
+    <div class="header-title">ジャンル管理</div>
+    <button class="header-btn" onclick="openGenreModal(null)" title="追加">＋</button>
+  </div>
+
+  <div class="genre-list" id="genre-list"></div>
+</div>
+
+<!-- ─── 画像拡大 Lightbox ─── -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <button class="lightbox-close" onclick="closeLightbox()">✕</button>
+  <img id="lightbox-img" src="" alt="">
+</div>
+
+<!-- ─── ジャンル編集モーダル ─── -->
+<div class="modal-overlay" id="genre-modal">
+  <div class="modal">
+    <div class="modal-title" id="genre-modal-title">ジャンルを追加</div>
+    <input type="hidden" id="genre-modal-id">
+    <div class="form-group">
+      <label class="form-label">絵文字</label>
+      <input type="text" id="genre-modal-emoji" class="form-input" placeholder="🍽️" maxlength="2">
+    </div>
+    <div class="form-group">
+      <label class="form-label">ジャンル名</label>
+      <input type="text" id="genre-modal-name" class="form-input" placeholder="例: カフェ">
+    </div>
+    <div class="form-group">
+      <label class="form-label">カラー</label>
+      <input type="color" id="genre-modal-color" class="form-input" value="#888888" style="height:42px;">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeGenreModal()">キャンセル</button>
+      <button class="btn btn-primary" onclick="saveGenre()">保存</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── 削除確認モーダル ─── -->
+<div class="modal-overlay" id="confirm-modal">
+  <div class="modal">
+    <div class="modal-title" id="confirm-modal-title">削除しますか？</div>
+    <div id="confirm-modal-body" style="font-size:14px; color:var(--text-muted);"></div>
+    <div class="modal-actions">
+      <button class="btn btn-secondary" onclick="closeConfirmModal()">キャンセル</button>
+      <button class="btn btn-danger" id="confirm-modal-ok">削除する</button>
+    </div>
+  </div>
+</div>
+
+<!-- ─── Toast ─── -->
+<div class="toast" id="error-toast"></div>
+<div class="toast" id="success-toast"></div>
+
+<!-- ─── Scripts ─── -->
+<script src="config.js"></script>
+<script src="auth.js"></script>
+<script src="drive.js"></script>
+<script src="geo.js"></script>
+<script src="ai.js"></script>
+<script src="app.js"></script>
+<script>
+// ════════════════════════════════════════
+// UI コントローラー
+// ════════════════════════════════════════
+
+let currentStoreId = null;  // 詳細表示中の店舗ID
+let formMode = 'new';       // 'new' | 'edit'
+let formPrevScreen = 'list';
+let selectedWantLevel = 0;
+let reviewPhotoFiles = [];    // 新規追加ファイル
+let reviewExistingIds = [];   // 既存ファイルID
+let filterGenreIds = [];
+
+// ────────────────────────────────────────
+// アプリ起動
+// ────────────────────────────────────────
+async function init() {
+  try {
+    // GIS スクリプトロード確認
+    await AUTH.init();
+
+    // 未ログインならログイン
+    if (!AUTH.isLoggedIn()) {
+      await AUTH.login();
+    }
+
+    // Drive初期化・データロード
+    await DRIVE.driveInit();
+    await loadData();
+
+    // フィルタージャンルチップを生成
+    buildFilterGenreChips();
+
+    // 一覧描画
+    await renderList();
+
+    document.getElementById('skeleton-list').style.display = 'none';
+    document.getElementById('accordion-list').style.display = 'block';
+  } catch (e) {
+    document.getElementById('skeleton-list').style.display = 'none';
+    showError('起動に失敗しました: ' + e.message);
+    console.error(e);
+  }
+}
+
+// ────────────────────────────────────────
+// 画面切り替え
+// ────────────────────────────────────────
+function showScreen(name) {
+  document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
+  document.getElementById(`screen-${name}`).classList.add('active');
+
+  if (name === 'list') renderList();
+  if (name === 'genres') renderGenreList();
+  if (name === 'register') resetRegisterFlow();
+}
+
+// ────────────────────────────────────────
+// 一覧描画
+// ────────────────────────────────────────
+async function renderList() {
+  const filteredStores = await filterStores(currentFilter);
+  const isSearching = currentFilter.query ||
+    currentFilter.genreIds.length > 0 ||
+    currentFilter.stationName ||
+    currentFilter.budgetRange ||
+    currentFilter.visitedState !== 'all' ||
+    currentFilter.wantLevel !== 'all';
+
+  const accordionEl = document.getElementById('accordion-list');
+  const flatEl = document.getElementById('flat-list');
+  const emptyEl = document.getElementById('empty-message');
+
+  if (filteredStores.length === 0) {
+    accordionEl.style.display = 'none';
+    flatEl.style.display = 'none';
+    emptyEl.style.display = 'block';
+    return;
+  }
+  emptyEl.style.display = 'none';
+
+  if (isSearching) {
+    // フラット表示
+    accordionEl.style.display = 'none';
+    flatEl.style.display = 'block';
+    flatEl.innerHTML = filteredStores.map((s) => renderFlatRow(s)).join('');
+  } else {
+    // アコーディオン表示
+    flatEl.style.display = 'none';
+    accordionEl.style.display = 'block';
+    const groups = groupByGenre(filteredStores);
+    accordionEl.innerHTML = groups.map((g) => renderAccordionGroup(g)).join('');
+  }
+}
+
+function renderAccordionGroup({ genre, stores: groupStores }) {
+  return `
+    <div class="accordion-group" data-genre-id="${genre.id}">
+      <div class="accordion-header" onclick="toggleAccordion(this.parentElement)">
+        <span class="accordion-emoji">${genre.emoji}</span>
+        <span class="accordion-name" style="color:${genre.color}">${genre.name}</span>
+        <span class="accordion-count">${groupStores.length}</span>
+        <span class="accordion-arrow">▶</span>
+      </div>
+      <div class="accordion-body">
+        ${groupStores.map(renderStoreRow).join('')}
+      </div>
+    </div>`;
+}
+
+function renderStoreRow(store) {
+  const want = store.want_level >= 2 ? '⭐⭐' : store.want_level === 1 ? '⭐' : '';
+  const visited = store.visited ? '✅' : '';
+  return `
+    <div class="store-row" onclick="showDetail('${store.id}')">
+      <span class="store-name">${esc(store.name)}</span>
+      <span class="store-station">${esc(store.station || '')}</span>
+      ${want ? `<span class="store-want">${want}</span>` : ''}
+      ${visited ? `<span class="store-visited">${visited}</span>` : ''}
+    </div>`;
+}
+
+function renderFlatRow(store) {
+  const genre = getGenresSorted().find((g) => (store.genres || []).includes(g.name));
+  const genreBadge = genre ? `<span class="flat-genre-badge">${genre.emoji} ${genre.name}</span>` : '';
+  const want = store.want_level >= 2 ? '⭐⭐' : store.want_level === 1 ? '⭐' : '';
+  return `
+    <div class="flat-store-row" onclick="showDetail('${store.id}')">
+      ${genreBadge}
+      <span class="store-name">${esc(store.name)}</span>
+      <span class="store-station">${esc(store.station || '')}</span>
+      ${want ? `<span class="store-want">${want}</span>` : ''}
+      ${store.visited ? '<span class="store-visited">✅</span>' : ''}
+    </div>`;
+}
+
+function toggleAccordion(groupEl) {
+  groupEl.classList.toggle('open');
+}
+
+// ────────────────────────────────────────
+// 詳細画面
+// ────────────────────────────────────────
+function showDetail(storeId) {
+  currentStoreId = storeId;
+  const store = getStore(storeId);
+  if (!store) return;
+
+  const left = document.getElementById('detail-col-left');
+  const right = document.getElementById('detail-col-right');
+
+  // ジャンルタグ
+  const genreTags = (store.genres || []).map((g) => {
+    const genre = genres.find((gn) => gn.name === g);
+    const color = genre ? genre.color : '#888';
+    return `<span class="genre-tag" style="color:${color}; border-color:${color}">${g}</span>`;
+  }).join('');
+
+  const wantIcon = store.want_level >= 2 ? ' ⭐⭐' : store.want_level === 1 ? ' ⭐' : '';
+
+  // 外部リンク
+  const links = [
+    store.lat && store.lng
+      ? `<a class="ext-link" href="https://www.google.com/maps/search/?api=1&query=${store.lat},${store.lng}" target="_blank">Google Map</a>`
+      : store.address
+        ? `<a class="ext-link" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(store.address)}" target="_blank">Google Map</a>`
+        : '',
+    store.url_tabelog ? `<a class="ext-link" href="${esc(store.url_tabelog)}" target="_blank">食べログ</a>` : '',
+    store.url_instagram ? `<a class="ext-link" href="${esc(store.url_instagram)}" target="_blank">Instagram</a>` : '',
+    store.url_official ? `<a class="ext-link" href="${esc(store.url_official)}" target="_blank">公式サイト</a>` : '',
+  ].filter(Boolean).join('');
+
+  // 基本情報
+  const infoRows = [
+    store.station || store.area ? `<div class="info-row"><span class="info-label">駅・エリア</span><span>${esc(store.station || '')}${store.area ? ` / ${esc(store.area)}` : ''}</span></div>` : '',
+    store.hours ? `<div class="info-row"><span class="info-label">営業時間</span><span>${esc(store.hours)}${store.closed ? `（定休: ${esc(store.closed)}）` : ''}</span></div>` : '',
+    (store.tags || []).length > 0 ? `<div class="info-row"><span class="info-label">タグ</span><span class="tags-list">${store.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(' ')}</span></div>` : '',
+    store.memo ? `<div class="info-row"><span class="info-label">メモ</span><div class="memo-text">${esc(store.memo)}</div></div>` : '',
+  ].filter(Boolean).join('');
+
+  // レビュー
+  let reviewHtml = '';
+  if (store.visited && (store.review_score || store.review_text || (store.review_images || []).length > 0)) {
+    const stars = store.review_score ? renderStars(store.review_score) : '';
+    const photos = (store.review_images || []).map((fid) =>
+      `<img class="review-photo" loading="lazy" src="${DRIVE.driveGetImageUrl(fid, 'w400')}"
+        onclick="openLightbox('${fid}')" alt="">`
+    ).join('');
+    reviewHtml = `
+      <div>
+        ${store.review_score ? `<span class="review-score">${store.review_score}</span> <span class="star-display">${stars}</span>` : ''}
+        ${store.review_date ? `<div class="review-date">${store.review_date}</div>` : ''}
+        ${store.review_text ? `<div class="review-text">${esc(store.review_text)}</div>` : ''}
+        ${photos ? `<div class="review-photos">${photos}</div>` : ''}
+      </div>`;
+  } else {
+    reviewHtml = `<button class="btn btn-outline" onclick="openEditForm()" style="width:100%;">＋ レビューを書く</button>`;
+  }
+
+  const leftHtml = `
+    <div>
+      <div class="detail-name">${esc(store.name)}<span style="font-size:18px;">${wantIcon}</span></div>
+      ${genreTags ? `<div class="detail-genres">${genreTags}</div>` : ''}
+      ${links ? `<div class="external-links">${links}</div>` : ''}
+      <div class="section-title">基本情報</div>
+      ${infoRows}
+    </div>`;
+
+  const rightHtml = `
+    <div>
+      <div class="section-title">レビュー</div>
+      ${reviewHtml}
+    </div>`;
+
+  const container = document.getElementById('detail-content');
+  // PC: 2カラム, SP: 縦1カラム
+  if (window.innerWidth >= 768) {
+    container.style.display = 'grid';
+    left.innerHTML = leftHtml;
+    right.innerHTML = rightHtml;
+  } else {
+    container.style.display = 'block';
+    left.innerHTML = leftHtml + `<div class="section-title">レビュー</div>${reviewHtml}`;
+    right.innerHTML = '';
+  }
+
+  showScreen('detail');
+}
+
+function renderStars(score) {
+  const full = Math.floor(score);
+  const half = score % 1 >= 0.5 ? 1 : 0;
+  return '★'.repeat(full) + (half ? '½' : '') + '☆'.repeat(5 - full - half);
+}
+
+function openLightbox(fileId) {
+  document.getElementById('lightbox-img').src = DRIVE.driveGetImageUrl(fileId, 'w1600');
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+
+// ────────────────────────────────────────
+// フォーム（編集・登録共通）
+// ────────────────────────────────────────
+function openFormNew(prefill = {}) {
+  formMode = 'new';
+  formPrevScreen = currentStoreId ? 'detail' : 'register';
+  document.getElementById('form-title').textContent = '店舗を登録';
+  clearForm();
+  fillForm(prefill);
+  showScreen('form');
+}
+
+function openEditForm() {
+  formMode = 'edit';
+  formPrevScreen = 'detail';
+  document.getElementById('form-title').textContent = '編集・レビュー';
+  const store = getStore(currentStoreId);
+  clearForm();
+  fillForm(store || {});
+  showScreen('form');
+}
+
+function onFormBack() {
+  showScreen(formPrevScreen === 'detail' ? 'detail' : 'register');
+  if (formPrevScreen === 'detail' && currentStoreId) showDetail(currentStoreId);
+}
+
+function clearForm() {
+  ['f-name','f-station','f-area','f-address',
+   'f-hours','f-closed','f-url-tabelog','f-url-instagram',
+   'f-url-official','f-tags','f-memo','f-review-text','f-lat','f-lng',
+   'f-review-score'].forEach((id) => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('form-store-id').value = '';
+  document.getElementById('f-latlng-row').style.display = 'none';
+  selectedWantLevel = 0;
+  reviewPhotoFiles = [];
+  reviewExistingIds = [];
+  document.getElementById('review-photo-preview').innerHTML = '';
+  buildFormGenres([]);
+  updateWantLevelBtns(0);
+}
+
+function fillForm(data) {
+  if (data.id) document.getElementById('form-store-id').value = data.id;
+  setVal('f-name', data.name);
+  setVal('f-station', data.station);
+  setVal('f-area', data.area);
+  setVal('f-address', data.address);
+  setVal('f-hours', data.hours);
+  setVal('f-closed', data.closed);
+  setVal('f-url-tabelog', data.url_tabelog);
+  setVal('f-url-instagram', data.url_instagram);
+  setVal('f-url-official', data.url_official);
+  setVal('f-tags', (data.tags || []).join(' '));
+  setVal('f-memo', data.memo);
+  setVal('f-review-text', data.review_text);
+
+  if (data.lat && data.lng) {
+    document.getElementById('f-lat').value = data.lat;
+    document.getElementById('f-lng').value = data.lng;
+    document.getElementById('f-latlng-row').style.display = 'flex';
+  } else if (data.address) {
+    // lat/lng がない場合、住所からサイレントにジオコーディング
+    silentGeocode(data.address);
+  }
+
+  selectedWantLevel = data.want_level || 0;
+  updateWantLevelBtns(selectedWantLevel);
+
+  if (data.review_score) {
+    document.getElementById('f-review-score').value = data.review_score;
+  }
+
+  reviewExistingIds = data.review_images ? [...data.review_images] : [];
+  renderReviewPhotoPreviews();
+
+  buildFormGenres(data.genres || []);
+}
+
+function setVal(id, val) {
+  if (val !== null && val !== undefined) document.getElementById(id).value = val;
+}
+
+function buildFormGenres(selected) {
+  const el = document.getElementById('f-genres');
+  el.innerHTML = getGenresSorted().map((g) =>
+    `<button type="button" class="genre-chip ${selected.includes(g.name) ? 'selected' : ''}"
+      data-name="${esc(g.name)}" onclick="toggleGenreChip(this)">
+      ${g.emoji} ${g.name}
+    </button>`
+  ).join('');
+}
+
+function toggleGenreChip(btn) {
+  btn.classList.toggle('selected');
+}
+
+function selectWantLevel(level) {
+  selectedWantLevel = level;
+  updateWantLevelBtns(level);
+}
+
+function updateWantLevelBtns(level) {
+  document.querySelectorAll('.want-level-btn').forEach((b) => {
+    b.classList.toggle('selected', parseInt(b.dataset.level) === level);
+  });
+}
+
+function updateReviewVisited() {
+  // visited 自動制御はフォーム保存時に行うため、UI上は特になし
+}
+
+// 写真プレビュー
+function renderReviewPhotoPreviews() {
+  const el = document.getElementById('review-photo-preview');
+  const existingHtml = reviewExistingIds.map((fid, i) =>
+    `<div class="photo-preview-item">
+      <img src="${DRIVE.driveGetImageUrl(fid, 'w400')}" alt="">
+      <button class="photo-delete-btn" onclick="removeExistingPhoto(${i})">✕</button>
+    </div>`
+  ).join('');
+  const newHtml = reviewPhotoFiles.map((f, i) => {
+    const url = URL.createObjectURL(f);
+    return `<div class="photo-preview-item">
+      <img src="${url}" alt="">
+      <button class="photo-delete-btn" onclick="removeNewPhoto(${i})">✕</button>
+    </div>`;
+  }).join('');
+  el.innerHTML = existingHtml + newHtml;
+}
+
+function onReviewPhotoAdd(files) {
+  reviewPhotoFiles = reviewPhotoFiles.concat(Array.from(files));
+  renderReviewPhotoPreviews();
+  updateReviewVisited();
+}
+
+function removeExistingPhoto(index) {
+  reviewExistingIds.splice(index, 1);
+  renderReviewPhotoPreviews();
+}
+
+function removeNewPhoto(index) {
+  reviewPhotoFiles.splice(index, 1);
+  renderReviewPhotoPreviews();
+}
+
+// フォーム保存
+async function saveForm() {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { showError('店名を入力してください'); return; }
+
+  const selectedGenres = [...document.querySelectorAll('#f-genres .genre-chip.selected')]
+    .map((b) => b.dataset.name);
+  const tags = document.getElementById('f-tags').value.trim()
+    .split(/\s+/).filter(Boolean);
+
+  const data = {
+    name,
+    genres: selectedGenres,
+    station: document.getElementById('f-station').value.trim(),
+    area: document.getElementById('f-area').value.trim(),
+    address: document.getElementById('f-address').value.trim(),
+    lat: parseFloat(document.getElementById('f-lat').value) || null,
+    lng: parseFloat(document.getElementById('f-lng').value) || null,
+    hours: document.getElementById('f-hours').value.trim(),
+    closed: document.getElementById('f-closed').value.trim(),
+    url_tabelog: document.getElementById('f-url-tabelog').value.trim(),
+    url_instagram: document.getElementById('f-url-instagram').value.trim(),
+    url_official: document.getElementById('f-url-official').value.trim(),
+    tags,
+    memo: document.getElementById('f-memo').value.trim(),
+    want_level: selectedWantLevel,
+    review_text: document.getElementById('f-review-text').value.trim(),
+    review_score: parseFloat(document.getElementById('f-review-score').value) || null,
+  };
+
+  // visited 制御
+  const hasReview = data.review_score || data.review_text ||
+    reviewExistingIds.length > 0 || reviewPhotoFiles.length > 0;
+  data.visited = hasReview;
+  data.review_date = hasReview ? new Date().toISOString().slice(0, 10) : null;
+
+  try {
+    // 画像アップロード
+    let storeId = document.getElementById('form-store-id').value;
+
+    if (formMode === 'new') {
+      // 先にIDだけ確定するために仮保存
+      const saved = await addStore(data);
+      storeId = saved.id;
+
+      if (reviewPhotoFiles.length > 0) {
+        const fileIds = await uploadReviewImages(storeId, reviewPhotoFiles, reviewExistingIds);
+        await updateStore(storeId, { review_images: fileIds });
+      } else {
+        await updateStore(storeId, { review_images: reviewExistingIds });
+      }
+    } else {
+      // 編集モード
+      if (reviewPhotoFiles.length > 0) {
+        const fileIds = await uploadReviewImages(storeId, reviewPhotoFiles, reviewExistingIds);
+        data.review_images = fileIds;
+      } else {
+        data.review_images = reviewExistingIds;
+      }
+      await updateStore(storeId, data);
+    }
+
+    currentStoreId = storeId;
+    showSuccess('保存しました');
+    showDetail(storeId);
+  } catch (e) {
+    showError('保存に失敗しました: ' + e.message);
+    console.error(e);
+  }
+}
+
+// Geocoding（手動ボタン用）
+async function doGeocode() {
+  const address = document.getElementById('f-address').value.trim();
+  if (!address) { showError('住所を入力してください'); return; }
+  try {
+    const { lat, lng } = await GEO.geocodeAddress(address);
+    document.getElementById('f-lat').value = lat;
+    document.getElementById('f-lng').value = lng;
+    document.getElementById('f-latlng-row').style.display = 'flex';
+    showSuccess(`緯度経度を取得しました (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+  } catch (e) {
+    showError(e.message);
+  }
+}
+
+// サイレントジオコーディング（エラー非表示）
+async function silentGeocode(address) {
+  if (!address) return;
+  try {
+    const { lat, lng } = await GEO.geocodeAddress(address);
+    document.getElementById('f-lat').value = lat;
+    document.getElementById('f-lng').value = lng;
+    document.getElementById('f-latlng-row').style.display = 'flex';
+    console.log(`[geocode] ${address} → (${lat.toFixed(4)}, ${lng.toFixed(4)})`);
+  } catch (e) {
+    console.log('[geocode] 取得失敗（サイレント）:', e.message);
+  }
+}
+
+// 店舗削除
+function confirmDeleteStore() {
+  const store = getStore(currentStoreId);
+  if (!store) return;
+  document.getElementById('confirm-modal-title').textContent = '店舗を削除しますか？';
+  document.getElementById('confirm-modal-body').textContent =
+    `「${store.name}」を削除します。この操作は取り消せません。`;
+  document.getElementById('confirm-modal-ok').onclick = async () => {
+    try {
+      await deleteStore(currentStoreId);
+      closeConfirmModal();
+      currentStoreId = null;
+      showSuccess('削除しました');
+      showScreen('list');
+    } catch (e) {
+      showError('削除に失敗しました: ' + e.message);
+    }
+  };
+  document.getElementById('confirm-modal').classList.add('open');
+}
+
+function closeConfirmModal() {
+  document.getElementById('confirm-modal').classList.remove('open');
+}
+
+// ────────────────────────────────────────
+// 検索・フィルタ UI
+// ────────────────────────────────────────
+let searchTimer = null;
+function onSearchInput(val) {
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(() => {
+    currentFilter.query = val;
+    renderList();
+  }, 200);
+}
+
+function clearSearch() {
+  document.getElementById('search-input').value = '';
+  currentFilter.query = '';
+  renderList();
+}
+
+function toggleFilterDrawer() {
+  document.getElementById('filter-overlay').classList.toggle('open');
+  document.getElementById('filter-drawer').classList.toggle('open');
+}
+
+function closeFilterDrawer() {
+  document.getElementById('filter-overlay').classList.remove('open');
+  document.getElementById('filter-drawer').classList.remove('open');
+  renderList();
+}
+
+function buildFilterGenreChips() {
+  const el = document.getElementById('filter-genres');
+  el.innerHTML = getGenresSorted().map((g) =>
+    `<button class="chip" data-genre-id="${g.id}" onclick="toggleGenreFilter(this)">
+      ${g.emoji} ${g.name}
+    </button>`
+  ).join('');
+}
+
+function toggleGenreFilter(btn) {
+  btn.classList.toggle('active');
+  filterGenreIds = [...document.querySelectorAll('#filter-genres .chip.active')]
+    .map((b) => b.dataset.genreId);
+  currentFilter.genreIds = filterGenreIds;
+}
+
+function selectChip(btn, type) {
+  const group = btn.parentElement;
+  group.querySelectorAll('.chip').forEach((c) => c.classList.remove('active'));
+  btn.classList.add('active');
+
+  if (type === 'budget') currentFilter.budgetRange = btn.dataset.budget || null;
+  if (type === 'visited') currentFilter.visitedState = btn.dataset.visited;
+  if (type === 'want') currentFilter.wantLevel = btn.dataset.want;
+}
+
+function updateFilter() {
+  currentFilter.stationName = document.getElementById('filter-station').value.trim();
+  currentFilter.sortBy = document.getElementById('filter-sort').value;
+  currentFilter.includesTags = document.getElementById('filter-tags').checked;
+}
+
+function resetFilter() {
+  currentFilter = {
+    query: currentFilter.query, // 検索ワードは保持
+    genreIds: [], stationName: '', budgetRange: null,
+    visitedState: 'all', wantLevel: 'all', includesTags: false, sortBy: 'added_desc',
+  };
+  document.getElementById('filter-station').value = '';
+  document.getElementById('filter-sort').value = 'added_desc';
+  document.getElementById('filter-tags').checked = false;
+  document.querySelectorAll('#filter-genres .chip').forEach((c) => c.classList.remove('active'));
+  document.querySelectorAll('[data-visited]')[0].classList.add('active');
+  document.querySelectorAll('[data-want]')[0].classList.add('active');
+  document.querySelectorAll('[data-budget]')[0].classList.add('active');
+  filterGenreIds = [];
+  renderList();
+}
+
+// ────────────────────────────────────────
+// 登録フロー: リセット
+// ────────────────────────────────────────
+function resetRegisterFlow() {
+  document.getElementById('register-methods').style.display = 'flex';
+  document.getElementById('register-methods').style.flexDirection = 'column';
+  document.getElementById('screenshot-area').style.display = 'none';
+  document.getElementById('name-search-area').style.display = 'none';
+  document.getElementById('search-candidates').style.display = 'none';
+  document.getElementById('ai-loading').classList.remove('visible');
+  document.getElementById('screenshot-file').value = '';
+}
+
+// ────────────────────────────────────────
+// 登録フロー: スクリーンショット
+// ────────────────────────────────────────
+function startScreenshotFlow() {
+  document.getElementById('register-methods').style.display = 'none';
+  document.getElementById('screenshot-area').style.display = 'block';
+  document.getElementById('name-search-area').style.display = 'none';
+  document.getElementById('search-candidates').style.display = 'none';
+}
+
+function onScreenshotDrop(e) {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) onScreenshotFile(file);
+}
+
+async function onScreenshotFile(file) {
+  if (!file) return;
+  showAiLoading('AIが画像を解析中…');
+
+  try {
+    const base64 = await fileToBase64(file);
+    const result = await AI.analyzeScreenshot(base64);
+
+    // 識別子が何かあればWebから詳細情報を補完する
+    const identifier = result.name || result.search_query || result.shop_instagram;
+    if (identifier) {
+      document.getElementById('ai-loading-msg').textContent = '詳細情報を収集中…';
+      try {
+        const details = await AI.enrichStoreData(result);
+        // スクショから取れた値を優先し、不足分だけ補完
+        Object.keys(details).forEach((key) => {
+          if (!result[key] && details[key]) result[key] = details[key];
+        });
+      } catch (e) {
+        console.warn('詳細情報の補完に失敗しました:', e);
+      }
+    }
+
+    hideAiLoading();
+    openFormNew(result);
+  } catch (e) {
+    hideAiLoading();
+    showError('AI解析に失敗しました。手動で入力してください。');
+    openFormNew({});
+  }
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+// ────────────────────────────────────────
+// 登録フロー: 名前検索
+// ────────────────────────────────────────
+function startNameSearchFlow() {
+  document.getElementById('register-methods').style.display = 'none';
+  document.getElementById('screenshot-area').style.display = 'none';
+  document.getElementById('name-search-area').style.display = 'block';
+  document.getElementById('search-candidates').style.display = 'none';
+}
+
+async function doNameSearch() {
+  const name = document.getElementById('search-store-name').value.trim();
+  if (!name) { showError('店名を入力してください'); return; }
+  const station = document.getElementById('search-store-station').value.trim();
+
+  showAiLoading('AIが検索中…');
+  try {
+    const candidates = await AI.searchStore(name, station);
+    hideAiLoading();
+
+    if (!candidates || candidates.length === 0) {
+      showError('候補が見つかりませんでした。手動で登録してください。');
+      openFormNew({ name, station });
+      return;
+    }
+
+    renderSearchCandidates(candidates);
+  } catch (e) {
+    hideAiLoading();
+    showError('検索に失敗しました: ' + e.message);
+  }
+}
+
+function renderSearchCandidates(candidates) {
+  document.getElementById('name-search-area').style.display = 'none';
+  const el = document.getElementById('search-candidates');
+  el.style.display = 'block';
+  el.innerHTML = `
+    <div style="margin-bottom:12px; color:var(--text-muted); font-size:13px;">候補を選択してください</div>
+    ${candidates.map((c, i) => `
+      <div class="candidate-card" onclick="selectCandidate(${i})">
+        <div class="candidate-name">${esc(c.name)}</div>
+        <div class="candidate-info">${[c.station, c.area, c.address].filter(Boolean).map(esc).join(' / ')}</div>
+        ${c.reason ? `<div class="candidate-reason">${esc(c.reason)}</div>` : ''}
+      </div>`
+    ).join('')}
+    <button class="btn btn-secondary" style="width:100%; margin-top:8px;"
+      onclick="openFormNew({name: document.getElementById('search-store-name').value})">
+      手動で入力する
+    </button>`;
+
+  // 候補データをグローバルに保持
+  window._searchCandidates = candidates;
+}
+
+async function selectCandidate(index) {
+  const candidate = window._searchCandidates[index];
+  showAiLoading('詳細情報を収集中…');
+  try {
+    const details = await AI.enrichStoreData({
+      name: candidate.name,
+      search_query: candidate.name + (candidate.area ? ' ' + candidate.area : ''),
+      area: candidate.area || null,
+      shop_instagram: null,
+    });
+    hideAiLoading();
+    openFormNew({ ...candidate, ...details });
+  } catch (e) {
+    hideAiLoading();
+    openFormNew(candidate);
+  }
+}
+
+function showAiLoading(msg) {
+  document.getElementById('ai-loading-msg').textContent = msg || 'AIが処理中…';
+  document.getElementById('ai-loading').classList.add('visible');
+  document.getElementById('screenshot-area').style.display = 'none';
+  document.getElementById('name-search-area').style.display = 'none';
+  document.getElementById('search-candidates').style.display = 'none';
+}
+
+function hideAiLoading() {
+  document.getElementById('ai-loading').classList.remove('visible');
+}
+
+// ────────────────────────────────────────
+// ジャンル管理
+// ────────────────────────────────────────
+function renderGenreList() {
+  const el = document.getElementById('genre-list');
+  const sorted = getGenresSorted();
+  el.innerHTML = sorted.map((g, i) => `
+    <div class="genre-item" data-genre-id="${g.id}">
+      <span class="genre-color-dot" style="background:${g.color}"></span>
+      <span style="font-size:18px;">${g.emoji}</span>
+      <span class="genre-item-name">${esc(g.name)}</span>
+      <div class="genre-order-btns">
+        ${i > 0 ? `<button class="genre-order-btn" onclick="moveGenre('${g.id}', -1)">▲</button>` : '<span style="width:24px;"></span>'}
+        ${i < sorted.length - 1 ? `<button class="genre-order-btn" onclick="moveGenre('${g.id}', 1)">▼</button>` : '<span style="width:24px;"></span>'}
+      </div>
+      <button class="genre-edit-btn" onclick="openGenreModal('${g.id}')">✏️</button>
+      <button class="genre-del-btn" onclick="confirmDeleteGenre('${g.id}')">🗑️</button>
+    </div>`
+  ).join('');
+}
+
+function openGenreModal(genreId) {
+  const modal = document.getElementById('genre-modal');
+  if (genreId) {
+    const g = genres.find((gn) => gn.id === genreId);
+    document.getElementById('genre-modal-title').textContent = 'ジャンルを編集';
+    document.getElementById('genre-modal-id').value = g.id;
+    document.getElementById('genre-modal-emoji').value = g.emoji;
+    document.getElementById('genre-modal-name').value = g.name;
+    document.getElementById('genre-modal-color').value = g.color;
+  } else {
+    document.getElementById('genre-modal-title').textContent = 'ジャンルを追加';
+    document.getElementById('genre-modal-id').value = '';
+    document.getElementById('genre-modal-emoji').value = '';
+    document.getElementById('genre-modal-name').value = '';
+    document.getElementById('genre-modal-color').value = '#888888';
+  }
+  modal.classList.add('open');
+}
+
+function closeGenreModal() {
+  document.getElementById('genre-modal').classList.remove('open');
+}
+
+async function saveGenre() {
+  const id = document.getElementById('genre-modal-id').value;
+  const data = {
+    name: document.getElementById('genre-modal-name').value.trim(),
+    emoji: document.getElementById('genre-modal-emoji').value.trim(),
+    color: document.getElementById('genre-modal-color').value,
+  };
+  if (!data.name) { showError('ジャンル名を入力してください'); return; }
+
+  try {
+    if (id) {
+      await updateGenre(id, data);
+    } else {
+      await addGenre(data);
+    }
+    closeGenreModal();
+    renderGenreList();
+    buildFilterGenreChips();
+    showSuccess('保存しました');
+  } catch (e) {
+    showError('保存に失敗しました: ' + e.message);
+  }
+}
+
+function confirmDeleteGenre(genreId) {
+  const g = genres.find((gn) => gn.id === genreId);
+  document.getElementById('confirm-modal-title').textContent = 'ジャンルを削除しますか？';
+  document.getElementById('confirm-modal-body').textContent =
+    `「${g.name}」を削除します。店舗データのジャンル情報には影響しません。`;
+  document.getElementById('confirm-modal-ok').onclick = async () => {
+    await deleteGenre(genreId);
+    closeConfirmModal();
+    renderGenreList();
+    buildFilterGenreChips();
+    showSuccess('削除しました');
+  };
+  document.getElementById('confirm-modal').classList.add('open');
+}
+
+async function moveGenre(genreId, direction) {
+  const sorted = getGenresSorted();
+  const idx = sorted.findIndex((g) => g.id === genreId);
+  if (idx < 0) return;
+  const newIdx = idx + direction;
+  if (newIdx < 0 || newIdx >= sorted.length) return;
+  [sorted[idx], sorted[newIdx]] = [sorted[newIdx], sorted[idx]];
+  await reorderGenres(sorted.map((g) => g.id));
+  renderGenreList();
+}
+
+// ────────────────────────────────────────
+// ユーティリティ
+// ────────────────────────────────────────
+function esc(str) {
+  if (!str) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+// ────────────────────────────────────────
+// Google GIS スクリプト読み込み後に起動
+// ────────────────────────────────────────
+window.addEventListener('load', init);
+</script>
+
+<!-- Google Identity Services -->
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+
+
+</body>
+</html>

@@ -1,0 +1,23 @@
+# APIキー・認証情報（絶対にコミットしないこと）
+config.js
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# エディタ
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Node.js（将来的な開発ツール用）
+node_modules/
+npm-debug.log*
+
+# ローカルのテストデータ
+*.local.json
+
+# ドキュメント（開発用）
+*.md
