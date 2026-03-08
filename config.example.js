@@ -28,7 +28,7 @@ const CONFIG_DEFAULT = {
   // Drive の restaurant-db フォルダID
   // オーナーが初回セットアップ後、設定画面に表示される値を貼り付けてコミットしてください
   // =============================
-  DB_FOLDER_ID: '',
+  DB_FOLDER_ID: '1U5cgLRCbormSqPHQvcN5Fe23U6ykRcBa',
 
   // =============================
   // 食べログURL検証設定

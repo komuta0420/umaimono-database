@@ -214,7 +214,7 @@
     .fab:hover { background: var(--accent-hover); transform: scale(1.05); }
 
     /* ─── オーナー専用要素（未ログイン時は非表示）─── */
-    .owner-only { display: none; }
+    body:not(.owner-mode) .owner-only { display: none !important; }
 
     /* ─── Detail Screen ─── */
     #screen-detail { background: var(--bg); }
@@ -488,7 +488,7 @@
     <div style="display:flex;gap:4px;align-items:center;">
       <button class="header-btn" id="login-btn" onclick="handleLoginBtn()" title="ログイン">👤</button>
       <button class="header-btn" onclick="openSettingsModal()" title="設定">🔑</button>
-      <button class="header-btn" onclick="showScreen('genres')" title="ジャンル管理">⚙️</button>
+      <button class="header-btn owner-only" onclick="showScreen('genres')" title="ジャンル管理">⚙️</button>
     </div>
   </div>
 
@@ -980,9 +980,7 @@ async function init() {
 // ────────────────────────────────────────
 function updateOwnerUI() {
   const isOwner = AUTH.isLoggedIn();
-  document.querySelectorAll('.owner-only').forEach(el => {
-    el.style.display = isOwner ? '' : 'none';
-  });
+  document.body.classList.toggle('owner-mode', isOwner);
   const loginBtn = document.getElementById('login-btn');
   if (loginBtn) {
     loginBtn.textContent = isOwner ? '🔓' : '👤';
