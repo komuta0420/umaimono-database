@@ -446,12 +446,16 @@ JSONのみを返してください。余分なテキストは不要です。
       if (CONFIG.USE_GEMINI_GROUNDING && provider === GEMINI) {
         // Gemini grounding モード: Google検索を使って1回で全情報取得
         // Jina用の「3セクション」指示は不要なのでGrounding専用プロンプトを使う
+        // shop_instagramハンドルからurl_instagramを直接構築できる場合はスキップ
+        const knownInstagramUrl = shop_instagram
+          ? `https://www.instagram.com/${shop_instagram.replace(/^@/, '')}/`
+          : null;
+
         const groundingPrompt = `
 「${name}」（エリア: ${area || '不明'}）という飲食店について、以下の手順で情報を収集してください。
-${shop_instagram ? `店の公式Instagram: ${shop_instagram}` : ''}
 
 1. まず「${name} ${area || ''} 食べログ」でGoogle検索して食べログページを探す
-2. 次に「${name} ${area || ''} Instagram 公式サイト」でGoogle検索してSNS・公式URLを探す
+${knownInstagramUrl ? '' : `2. 次に「${name} ${area || ''} Instagram 公式サイト」でGoogle検索してSNS・公式URLを探す`}
 
 # 食べログURL 厳守事項
 - 「tabelog.com/[都道府県]/[エリア]/[数字]/」形式のURLのみ採用
@@ -471,9 +475,9 @@ ${shop_instagram ? `店の公式Instagram: ${shop_instagram}` : ''}
   "hours": "営業時間",
   "closed": "定休日",
   "url_tabelog": "食べログURL",
-  "url_instagram": "Instagram URL",
+  "url_instagram": ${knownInstagramUrl ? `"${knownInstagramUrl}"` : '"Instagram URL（見つからなければ null）"'},
   "url_official": "公式サイトURL（tabelog/instagram以外）",
-  "shop_instagram": "${shop_instagram || null}",
+  "shop_instagram": ${shop_instagram ? `"${shop_instagram}"` : 'null'},
   "tags": ["特徴"],
   "memo": "特記事項"
 }
@@ -481,6 +485,8 @@ ${shop_instagram ? `店の公式Instagram: ${shop_instagram}` : ''}
 JSONのみを返してください。余分なテキストは不要です。
 `;
         result = await GEMINI.requestWithSearch(groundingPrompt);
+        // shop_instagramが既知の場合は確実にurl_instagramをセット
+        if (knownInstagramUrl) result.url_instagram = knownInstagramUrl;
       } else if (provider === GEMINI) {
         // Jina Search + Flash Lite モード（USE_GEMINI_GROUNDING=false 時）
         const [tabelogText, snsText] = await Promise.all([
