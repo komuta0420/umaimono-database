@@ -60,6 +60,30 @@
     .header-btn:hover { color: var(--text); background: var(--surface2); }
     .back-btn { font-size: 22px; }
 
+    /* ─── Login Dropdown Menu ─── */
+    .login-menu-wrap { position: relative; }
+    .login-menu {
+      display: none;
+      position: absolute; top: calc(100% + 6px); right: 0;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 8px 0;
+      min-width: 200px; z-index: 200;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.4);
+    }
+    .login-menu.open { display: block; }
+    .login-menu-info {
+      padding: 8px 16px 12px;
+      font-size: 12px; color: var(--text-muted); border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+    }
+    .login-menu-item {
+      width: 100%; text-align: left; background: none; border: none;
+      color: var(--text); font-size: 14px; padding: 10px 16px;
+      cursor: pointer; display: block;
+    }
+    .login-menu-item:hover { background: var(--surface); }
+    .login-menu-item.danger { color: var(--danger); }
+
     /* ─── Search Bar ─── */
     .search-bar {
       background: var(--surface);
@@ -486,7 +510,13 @@
   <div class="header">
     <div class="header-title">うまそうな店たち</div>
     <div style="display:flex;gap:4px;align-items:center;">
-      <button class="header-btn" id="login-btn" onclick="handleLoginBtn()" title="ログイン">👤</button>
+      <div class="login-menu-wrap">
+        <button class="header-btn" id="login-btn" onclick="toggleLoginMenu(event)" title="ログイン">👤</button>
+        <div class="login-menu" id="login-menu">
+          <div class="login-menu-info" id="login-menu-info">未ログイン（閲覧のみ）</div>
+          <button class="login-menu-item" id="login-menu-action" onclick="doLoginAction()">ログイン（編集機能を使う）</button>
+        </div>
+      </div>
       <button class="header-btn" onclick="openSettingsModal()" title="設定">🔑</button>
       <button class="header-btn owner-only" onclick="showScreen('genres')" title="ジャンル管理">⚙️</button>
     </div>
@@ -536,6 +566,7 @@
       placeholder="例: 池袋" oninput="updateFilter()">
   </div>
 
+  <!-- 予算フィルタ（予算データ廃止のためコメントアウト）
   <div class="filter-section">
     <span class="filter-label">予算</span>
     <div class="filter-chips">
@@ -546,6 +577,7 @@
       <button class="chip" data-budget="premium" onclick="selectChip(this,'budget')">¥8K〜</button>
     </div>
   </div>
+  -->
 
   <div class="filter-section">
     <span class="filter-label">訪問状態</span>
@@ -576,7 +608,7 @@
   </div>
 
   <div class="filter-section" style="display:flex; align-items:center; gap:10px;">
-    <input type="checkbox" id="filter-tags" onchange="updateFilter()">
+    <input type="checkbox" id="filter-tags" checked onchange="updateFilter()">
     <label for="filter-tags" style="font-size:13px;">タグも検索対象に含める</label>
   </div>
 
@@ -982,16 +1014,41 @@ function updateOwnerUI() {
   const isOwner = AUTH.isLoggedIn();
   document.body.classList.toggle('owner-mode', isOwner);
   const loginBtn = document.getElementById('login-btn');
+  const menuInfo = document.getElementById('login-menu-info');
+  const menuAction = document.getElementById('login-menu-action');
   if (loginBtn) {
     loginBtn.textContent = isOwner ? '🔓' : '👤';
-    loginBtn.title = isOwner ? 'ログアウト' : 'ログイン（編集機能を使う）';
+    loginBtn.title = isOwner ? 'メニュー' : 'ログイン';
+  }
+  if (menuAction) {
+    if (isOwner) {
+      const email = AUTH.getUserEmail ? AUTH.getUserEmail() : '';
+      if (menuInfo) menuInfo.textContent = email ? `ログイン中: ${email}` : 'ログイン中（オーナー）';
+      menuAction.textContent = 'ログアウト';
+      menuAction.className = 'login-menu-item danger';
+    } else {
+      if (menuInfo) menuInfo.textContent = '未ログイン（閲覧のみ）';
+      menuAction.textContent = 'ログイン（編集機能を使う）';
+      menuAction.className = 'login-menu-item';
+    }
   }
 }
 
 // ────────────────────────────────────────
-// ログイン/ログアウトボタン
+// ログインメニュー制御
 // ────────────────────────────────────────
-async function handleLoginBtn() {
+function toggleLoginMenu(e) {
+  e.stopPropagation();
+  document.getElementById('login-menu').classList.toggle('open');
+}
+
+function closeLoginMenu() {
+  const menu = document.getElementById('login-menu');
+  if (menu) menu.classList.remove('open');
+}
+
+async function doLoginAction() {
+  closeLoginMenu();
   if (AUTH.isLoggedIn()) {
     AUTH.logout();
     updateOwnerUI();
@@ -1191,10 +1248,10 @@ function showDetail(storeId) {
 
   // 外部リンク
   const links = [
-    store.lat && store.lng
-      ? `<a class="ext-link" href="https://www.google.com/maps/search/?api=1&query=${store.lat},${store.lng}" target="_blank">Google Map</a>`
-      : store.address
-        ? `<a class="ext-link" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(store.address)}" target="_blank">Google Map</a>`
+    store.address
+      ? `<a class="ext-link" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(store.address)}" target="_blank">Google Map</a>`
+      : store.lat && store.lng
+        ? `<a class="ext-link" href="https://www.google.com/maps/search/?api=1&query=${store.lat},${store.lng}" target="_blank">Google Map</a>`
         : '',
     store.url_tabelog ? `<a class="ext-link" href="${esc(store.url_tabelog)}" target="_blank">食べログ</a>` : '',
     store.url_instagram ? `<a class="ext-link" href="${esc(store.url_instagram)}" target="_blank">Instagram</a>` : '',
@@ -1204,6 +1261,7 @@ function showDetail(storeId) {
   // 基本情報
   const infoRows = [
     store.station || store.area ? `<div class="info-row"><span class="info-label">駅・エリア</span><span>${esc(store.station || '')}${store.area ? ` / ${esc(store.area)}` : ''}</span></div>` : '',
+    store.address ? `<div class="info-row"><span class="info-label">住所</span><span class="info-value">${esc(store.address)}</span></div>` : '',
     store.hours ? `<div class="info-row"><span class="info-label">営業時間</span><span>${esc(store.hours)}${store.closed ? `（定休: ${esc(store.closed)}）` : ''}</span></div>` : '',
     (store.tags || []).length > 0 ? `<div class="info-row"><span class="info-label">タグ</span><span class="tags-list">${store.tags.map((t) => `<span class="tag">${esc(t)}</span>`).join(' ')}</span></div>` : '',
     store.memo ? `<div class="info-row"><span class="info-label">メモ</span><div class="memo-text">${esc(store.memo)}</div></div>` : '',
@@ -1611,15 +1669,15 @@ function resetFilter() {
   currentFilter = {
     query: currentFilter.query, // 検索ワードは保持
     genreIds: [], stationName: '', budgetRange: null,
-    visitedState: 'all', wantLevel: 'all', includesTags: false, sortBy: 'added_desc',
+    visitedState: 'all', wantLevel: 'all', includesTags: true, sortBy: 'added_desc',
   };
   document.getElementById('filter-station').value = '';
   document.getElementById('filter-sort').value = 'added_desc';
-  document.getElementById('filter-tags').checked = false;
+  document.getElementById('filter-tags').checked = true;
   document.querySelectorAll('#filter-genres .chip').forEach((c) => c.classList.remove('active'));
   document.querySelectorAll('[data-visited]')[0].classList.add('active');
   document.querySelectorAll('[data-want]')[0].classList.add('active');
-  document.querySelectorAll('[data-budget]')[0].classList.add('active');
+  // document.querySelectorAll('[data-budget]')[0].classList.add('active'); // 予算フィルタ廃止
   filterGenreIds = [];
   renderList();
 }
@@ -1889,6 +1947,9 @@ function esc(str) {
 // Google GIS スクリプト読み込み後に起動
 // ────────────────────────────────────────
 window.addEventListener('load', init);
+
+// ログインメニューをページ外クリックで閉じる
+document.addEventListener('click', () => closeLoginMenu());
 </script>
 
 <!-- Google Identity Services -->

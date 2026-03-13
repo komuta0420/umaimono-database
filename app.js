@@ -14,7 +14,7 @@ let currentFilter = {
   budgetRange: null, // 'low' | 'mid' | 'high' | 'premium'
   visitedState: 'all', // 'all' | 'visited' | 'unvisited'
   wantLevel: 'all',   // 'all' | '1' | '2'
-  includesTags: false,
+  includesTags: true,
   sortBy: 'added_desc', // 'added_desc' | 'added_asc' | 'score_desc' | 'score_asc'
 };
 
@@ -204,7 +204,7 @@ function matchQuery(store, query, includesTags = false) {
   return terms.every((term) => targets.some((t) => t.includes(term.toLowerCase())));
 }
 
-// 予算範囲フィルタ
+/* 予算範囲フィルタ（予算データ廃止のためコメントアウト）
 function matchBudget(store, budgetRange) {
   if (!budgetRange) return true;
   const min = store.budget_min;
@@ -220,6 +220,7 @@ function matchBudget(store, budgetRange) {
     default:        return true;
   }
 }
+*/
 
 // メインフィルタ関数
 async function filterStores(filter = currentFilter) {
@@ -249,8 +250,8 @@ async function filterStores(filter = currentFilter) {
     result = filtered;
   }
 
-  // 予算フィルタ
-  result = result.filter((s) => matchBudget(s, filter.budgetRange));
+  // 予算フィルタ（予算データ廃止のためコメントアウト）
+  // result = result.filter((s) => matchBudget(s, filter.budgetRange));
 
   // 訪問状態フィルタ
   if (filter.visitedState === 'visited') {

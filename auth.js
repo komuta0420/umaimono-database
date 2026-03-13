@@ -4,6 +4,8 @@ const AUTH = (() => {
   // OAuth 2.0 スコープ（Drive ファイル読み書き）
   const SCOPES = 'https://www.googleapis.com/auth/drive.file';
   const STORAGE_KEY = 'restaurant_db_token';
+  // ログイン状態を永続化するフラグ（ページ再読み込み後も自動再ログインするため）
+  const PERSISTENT_KEY = 'restaurant_db_logged_in';
 
   let tokenClient = null;
   let currentToken = null;
@@ -44,20 +46,51 @@ const AUTH = (() => {
           // 有効期限チェック（5分の余裕を持たせる）
           if (parsed.expires_at > Date.now() + 5 * 60 * 1000) {
             currentToken = parsed;
+            resolve();
+            return;
           }
         } catch (e) {
           localStorage.removeItem(STORAGE_KEY);
         }
       }
 
-      resolve();
+      // トークン期限切れでも永続フラグがあればサイレント再ログインを試みる
+      // （Googleにサインイン済みなら画面操作なしで復帰できる）
+      if (localStorage.getItem(PERSISTENT_KEY)) {
+        let settled = false;
+        const originalCallback = tokenClient.callback;
+
+        tokenClient.callback = (response) => {
+          originalCallback(response);
+          if (!settled) {
+            settled = true;
+            tokenClient.callback = originalCallback;
+            resolve();
+          }
+        };
+
+        // 4秒以内に応答がなければログアウト状態として起動
+        setTimeout(() => {
+          if (!settled) {
+            settled = true;
+            tokenClient.callback = originalCallback;
+            resolve();
+          }
+        }, 4000);
+
+        tokenClient.requestAccessToken({ prompt: '' });
+      } else {
+        resolve();
+      }
     });
   }
 
   // ────────────────────────────────────────
   // ログイン（トークン要求）
+  // forceConsent=true: 初回ログイン時（同意画面を表示）
+  // forceConsent=false: 自動更新時（サイレント更新を試みる）
   // ────────────────────────────────────────
-  async function login() {
+  async function login(forceConsent = true) {
     return new Promise((resolve, reject) => {
       if (!tokenClient) {
         reject(new Error('認証クライアントが初期化されていません'));
@@ -75,6 +108,7 @@ const AUTH = (() => {
           expires_at: Date.now() + (response.expires_in * 1000),
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
+        localStorage.setItem(PERSISTENT_KEY, '1'); // 永続フラグをセット
         resolve(currentToken);
       };
 
@@ -82,7 +116,8 @@ const AUTH = (() => {
       if (currentToken) {
         resolve(currentToken);
       } else {
-        tokenClient.requestAccessToken({ prompt: 'consent' });
+        // 初回は同意画面を表示、自動更新時はサイレント更新を試みる
+        tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
       }
     });
   }
@@ -98,6 +133,7 @@ const AUTH = (() => {
     }
     currentToken = null;
     localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(PERSISTENT_KEY); // 永続フラグを削除
   }
 
   // ────────────────────────────────────────
@@ -109,8 +145,8 @@ const AUTH = (() => {
       return currentToken.access_token;
     }
 
-    // 期限切れ or 未ログイン → ログインフローを実行
-    const token = await login();
+    // 期限切れ or 未ログイン → サイレント更新を試みる（ポップアップなし）
+    const token = await login(false);
     return token.access_token;
   }
 

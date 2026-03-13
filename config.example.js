@@ -14,7 +14,7 @@ const CONFIG_DEFAULT = {
   // オーナーの Google アカウント（公開しないため空欄）
   // アプリ内の🔑設定画面から入力 → localStorage に保存されます
   // =============================
-  OWNER_EMAIL: '',
+  OWNER_EMAIL: atob('a2NjLmtvbXRhbkBnbWFpbC5jb20='),
 
   // =============================
   // Google Drive 公開読み取り用 API キー
