@@ -40,6 +40,13 @@ const CONFIG_DEFAULT = {
   // =============================
   AI_PROVIDER: 'gemini',
 
+  // =============================
+  // Gemini grounding 検索モード
+  // true: GEMINI_API_KEY を使った Google 検索グラウンディング（1回で全情報取得）
+  // false: Jina AI Search を使った検索（JINA_API_KEY が必要）
+  // =============================
+  USE_GEMINI_GROUNDING: false,
+
   // 以下は localStorage に保存される秘密キーのデフォルト（空）
   JINA_API_KEY: '',
   GEMINI_API_KEY: '',

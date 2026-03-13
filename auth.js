@@ -11,6 +11,8 @@ const AUTH = (() => {
   let currentToken = null;
   // init()のサイレント再ログインが完了するまで待機するためのPromise
   let initAuthPromise = null;
+  // トークン自動更新タイマーID
+  let refreshTimer = null;
 
   // ────────────────────────────────────────
   // 初期化: Google Identity Services をロード
@@ -37,6 +39,7 @@ const AUTH = (() => {
             expires_at: Date.now() + (response.expires_in * 1000),
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
+          scheduleTokenRefresh(currentToken.expires_at);
         },
       });
 
@@ -48,6 +51,7 @@ const AUTH = (() => {
           // 有効期限チェック（5分の余裕を持たせる）
           if (parsed.expires_at > Date.now() + 5 * 60 * 1000) {
             currentToken = parsed;
+            scheduleTokenRefresh(currentToken.expires_at);
             resolve();
             return;
           }
@@ -129,8 +133,8 @@ const AUTH = (() => {
         resolve(currentToken);
       };
 
-      // 既存トークンがあれば即座に解決、なければポップアップ
-      if (currentToken) {
+      // 有効なトークンがあれば即座に解決、なければ（再）取得
+      if (currentToken && currentToken.expires_at > Date.now() + 60 * 1000) {
         resolve(currentToken);
       } else {
         // 初回は同意画面を表示、自動更新時はサイレント更新を試みる
@@ -140,9 +144,31 @@ const AUTH = (() => {
   }
 
   // ────────────────────────────────────────
+  // トークン自動更新スケジューラー
+  // 期限5分前にサイレント更新を実行し、ページを開いたままでも継続ログイン
+  // ────────────────────────────────────────
+  function scheduleTokenRefresh(expiresAt) {
+    if (refreshTimer) clearTimeout(refreshTimer);
+    // 期限5分前に更新（最小30秒後）
+    const delay = Math.max(30 * 1000, expiresAt - Date.now() - 5 * 60 * 1000);
+    refreshTimer = setTimeout(async () => {
+      try {
+        await login(false);
+        console.log('トークンを自動更新しました');
+      } catch (e) {
+        console.warn('トークン自動更新失敗:', e);
+      }
+    }, delay);
+  }
+
+  // ────────────────────────────────────────
   // ログアウト
   // ────────────────────────────────────────
   function logout() {
+    if (refreshTimer) {
+      clearTimeout(refreshTimer);
+      refreshTimer = null;
+    }
     if (currentToken) {
       google.accounts.oauth2.revoke(currentToken.access_token, () => {
         console.log('トークンを失効させました');

@@ -345,12 +345,14 @@ JSONのみを返してください。余分なテキストは不要です。
     try {
       const provider = getProvider();
       let result;
-      // Jina Search + Flash Lite（無料）: Gemini grounding の代替（完全無料化）
-      if (provider === GEMINI) {
+      if (CONFIG.USE_GEMINI_GROUNDING && provider === GEMINI) {
+        // Gemini grounding モード: Google検索を使って1回で候補を取得
+        result = await GEMINI.requestWithSearch(
+          `「${storeName}」${stationHint ? `（${stationHint.trim()}）` : ''}という飲食店をGoogle検索して、候補を最大5件JSON配列で返してください。\n\n` + extractPrompt
+        );
+      } else if (provider === GEMINI) {
+        // Jina Search + Flash Lite モード（USE_GEMINI_GROUNDING=false 時）
         result = await requestJinaWithFree(searchQuery, extractPrompt);
-      // ↓ 旧: Gemini grounding（有料キー使用・課金リスクあり）
-      // if (provider === GEMINI) {
-      //   result = await GEMINI.requestWithSearch(prompt);
       } else if (provider === 'qwen') {
         result = await requestQwenWithSearch(
           `「${storeName}」${stationHint ? `（${stationHint.trim()}）` : ''}という飲食店を検索して候補を最大5件JSON配列で返してください。` + extractPrompt
@@ -440,11 +442,16 @@ JSONのみを返してください。余分なテキストは不要です。
     try {
       const provider = getProvider();
       let result;
-      if (provider === GEMINI) {
-        // 2本の検索を並列実行（食べログページ読み取りで住所・時間をカバーするため削減）
+      if (CONFIG.USE_GEMINI_GROUNDING && provider === GEMINI) {
+        // Gemini grounding モード: Google検索を使って1回で全情報取得
+        result = await GEMINI.requestWithSearch(
+          `「${name}」（エリア: ${area || '不明'}）という飲食店をGoogle検索して、以下の情報をJSONで返してください。\n${shop_instagram ? `店の公式Instagram: ${shop_instagram}\n` : ''}\n` + extractPrompt
+        );
+      } else if (provider === GEMINI) {
+        // Jina Search + Flash Lite モード（USE_GEMINI_GROUNDING=false 時）
         const [tabelogText, snsText] = await Promise.all([
-          jinaSearch(`${optimizedQuery} 食べログ`),                  // 食べログURL
-          jinaSearch(`${name} ${area || ''} Instagram 公式サイト`),  // SNS・公式
+          jinaSearch(`${optimizedQuery} 食べログ`),
+          jinaSearch(`${name} ${area || ''} Instagram 公式サイト`),
         ]);
 
         // 食べログURLをregexで抽出してページを読む
@@ -461,15 +468,9 @@ JSONのみを返してください。余分なテキストは不要です。
         ].join('\n\n');
         result = await GEMINI.request(`${extractPrompt}\n\n# 取得コンテンツ\n${sections}`);
 
-        // 食べログURLはregex抽出済みを優先（Geminiの推測を防ぐ）
         if (tabelogMatch) {
           result.url_tabelog = await verifyTabelogUrl(tabelogMatch[0], name);
         }
-
-      // ↓ 旧: Gemini grounding（有料キー使用・課金リスクあり）
-      // if (provider === GEMINI) {
-      //   result = await GEMINI.requestWithSearch(prompt);
-      // Qwen版: Bing検索グラウンディングを使用
       } else if (provider === 'qwen') {
         result = await requestQwenWithSearch(extractPrompt);
       // Claude版: Web検索なし（プロンプトのみ）

@@ -907,25 +907,44 @@
     <!-- ログイン状態 -->
     <div id="settings-login-status" style="margin-bottom:16px; padding:10px 12px; border-radius:8px; font-size:13px; background:var(--color-surface);"></div>
 
-    <!-- オーナー設定 -->
-    <div style="font-size:12px; font-weight:bold; color:var(--color-accent); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.05em;">オーナー設定</div>
-    <div class="form-group">
-      <label class="form-label">オーナーの Google メールアドレス</label>
-      <input type="email" id="s-owner-email" class="form-input" placeholder="example@gmail.com">
-      <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">設定したアドレスのみ編集機能が使えます。ここでの入力はこのブラウザにのみ保存されます。</div>
-    </div>
-
     <!-- AI機能 APIキー -->
     <div style="font-size:12px; font-weight:bold; color:var(--color-accent); margin-bottom:8px; text-transform:uppercase; letter-spacing:0.05em;">AI機能（任意）</div>
-    <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">未入力でも閲覧・手動登録は使えます。スクショ解析・店名検索にはGeminiとJinaが必要です。</p>
+    <p style="font-size:12px; color:var(--text-muted); margin-bottom:12px;">未入力でも閲覧・手動登録は使えます。スクショ解析にはGemini（無料）が必要です。</p>
 
     <div class="form-group">
-      <label class="form-label">Gemini API キー</label>
+      <label class="form-label">Gemini API キー（無料枠・画像解析用）</label>
       <input type="password" id="s-gemini-free-key" class="form-input" placeholder="AIza...">
+      <div style="font-size:11px; color:var(--text-muted); margin-top:4px;">スクショ解析に使用。Google AI Studio の無料キー。</div>
     </div>
+
+    <!-- 検索モード選択 -->
+    <div style="font-size:12px; font-weight:bold; color:var(--color-accent); margin:16px 0 8px; text-transform:uppercase; letter-spacing:0.05em;">Web検索モード</div>
     <div class="form-group">
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+          <input type="radio" name="search-mode" id="s-search-jina" value="jina" style="margin-top:2px; accent-color:var(--color-accent);">
+          <div>
+            <div style="font-size:13px; color:var(--color-text);">Jina AI 検索</div>
+            <div style="font-size:11px; color:var(--text-muted);">無料枠あり（月1Mトークン）。下のJina APIキーが必要。</div>
+          </div>
+        </label>
+        <label style="display:flex; align-items:flex-start; gap:10px; cursor:pointer;">
+          <input type="radio" name="search-mode" id="s-search-gemini" value="gemini" style="margin-top:2px; accent-color:var(--color-accent);">
+          <div>
+            <div style="font-size:13px; color:var(--color-text);">Gemini グラウンディング（Google検索）</div>
+            <div style="font-size:11px; color:var(--text-muted);">1クエリで全情報取得。下のGemini APIキー（有料）が必要。約$0.07/件。</div>
+          </div>
+        </label>
+      </div>
+    </div>
+
+    <div class="form-group" id="s-jina-group">
       <label class="form-label">Jina AI API キー</label>
       <input type="password" id="s-jina-key" class="form-input" placeholder="jina_...">
+    </div>
+    <div class="form-group" id="s-gemini-paid-group">
+      <label class="form-label">Gemini API キー（有料・グラウンディング用）</label>
+      <input type="password" id="s-gemini-key" class="form-input" placeholder="AIza...">
     </div>
 
     <!-- Drive フォルダID（オーナー向け表示） -->
@@ -1080,9 +1099,26 @@ async function doLoginAction() {
 // ────────────────────────────────────────
 function openSettingsModal() {
   // 現在の値を反映
-  document.getElementById('s-owner-email').value = CONFIG.OWNER_EMAIL || '';
   document.getElementById('s-gemini-free-key').value = CONFIG.GEMINI_API_KEY_FREE || '';
   document.getElementById('s-jina-key').value = CONFIG.JINA_API_KEY || '';
+  document.getElementById('s-gemini-key').value = CONFIG.GEMINI_API_KEY || '';
+
+  // 検索モード選択
+  const isGrounding = CONFIG.USE_GEMINI_GROUNDING === true;
+  document.getElementById('s-search-jina').checked = !isGrounding;
+  document.getElementById('s-search-gemini').checked = isGrounding;
+  document.getElementById('s-jina-group').style.display = isGrounding ? 'none' : 'block';
+  document.getElementById('s-gemini-paid-group').style.display = isGrounding ? 'block' : 'none';
+
+  // ラジオ変更時に表示切替
+  document.getElementById('s-search-jina').onchange = () => {
+    document.getElementById('s-jina-group').style.display = 'block';
+    document.getElementById('s-gemini-paid-group').style.display = 'none';
+  };
+  document.getElementById('s-search-gemini').onchange = () => {
+    document.getElementById('s-jina-group').style.display = 'none';
+    document.getElementById('s-gemini-paid-group').style.display = 'block';
+  };
 
   // ログイン状態表示
   const statusEl = document.getElementById('settings-login-status');
@@ -1112,10 +1148,12 @@ function closeSettingsModal() {
 }
 
 function saveSettings() {
+  const useGrounding = document.getElementById('s-search-gemini').checked;
   const saved = {
-    OWNER_EMAIL: document.getElementById('s-owner-email').value.trim(),
     GEMINI_API_KEY_FREE: document.getElementById('s-gemini-free-key').value.trim(),
     JINA_API_KEY: document.getElementById('s-jina-key').value.trim(),
+    GEMINI_API_KEY: document.getElementById('s-gemini-key').value.trim(),
+    USE_GEMINI_GROUNDING: useGrounding,
   };
   // 空の値は保存しない
   Object.keys(saved).forEach(k => { if (!saved[k]) delete saved[k]; });
