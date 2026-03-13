@@ -9,6 +9,8 @@ const AUTH = (() => {
 
   let tokenClient = null;
   let currentToken = null;
+  // init()のサイレント再ログインが完了するまで待機するためのPromise
+  let initAuthPromise = null;
 
   // ────────────────────────────────────────
   // 初期化: Google Identity Services をロード
@@ -60,23 +62,30 @@ const AUTH = (() => {
         let settled = false;
         const originalCallback = tokenClient.callback;
 
-        tokenClient.callback = (response) => {
-          originalCallback(response);
-          if (!settled) {
-            settled = true;
-            tokenClient.callback = originalCallback;
-            resolve();
-          }
-        };
+        // login()が競合しないよう、完了を追跡するPromiseを保持する
+        initAuthPromise = new Promise((initResolve) => {
+          tokenClient.callback = (response) => {
+            originalCallback(response);
+            if (!settled) {
+              settled = true;
+              tokenClient.callback = originalCallback;
+              initAuthPromise = null;
+              initResolve();
+              resolve();
+            }
+          };
 
-        // 4秒以内に応答がなければログアウト状態として起動
-        setTimeout(() => {
-          if (!settled) {
-            settled = true;
-            tokenClient.callback = originalCallback;
-            resolve();
-          }
-        }, 4000);
+          // 4秒以内に応答がなければログアウト状態として起動
+          setTimeout(() => {
+            if (!settled) {
+              settled = true;
+              tokenClient.callback = originalCallback;
+              initAuthPromise = null;
+              initResolve();
+              resolve();
+            }
+          }, 4000);
+        });
 
         tokenClient.requestAccessToken({ prompt: '' });
       } else {
@@ -91,6 +100,14 @@ const AUTH = (() => {
   // forceConsent=false: 自動更新時（サイレント更新を試みる）
   // ────────────────────────────────────────
   async function login(forceConsent = true) {
+    // init()のサイレント再ログインが進行中なら完了を待つ（競合防止）
+    if (initAuthPromise) await initAuthPromise;
+
+    // init()のサイレント再ログインで既にトークンが取得できていれば即返す
+    if (currentToken && currentToken.expires_at > Date.now() + 60 * 1000) {
+      return currentToken;
+    }
+
     return new Promise((resolve, reject) => {
       if (!tokenClient) {
         reject(new Error('認証クライアントが初期化されていません'));

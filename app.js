@@ -232,9 +232,13 @@ async function filterStores(filter = currentFilter) {
   }
 
   // ジャンル絞り込み（複数選択、OR条件）
+  // store.genres はジャンル名の配列、filter.genreIds はUUIDの配列なので名前に変換して比較
   if (filter.genreIds && filter.genreIds.length > 0) {
+    const genreNames = genres
+      .filter((g) => filter.genreIds.includes(g.id))
+      .map((g) => g.name);
     result = result.filter((s) =>
-      (s.genres || []).some((g) => filter.genreIds.includes(g))
+      (s.genres || []).some((g) => genreNames.includes(g))
     );
   }
 

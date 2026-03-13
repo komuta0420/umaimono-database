@@ -220,10 +220,11 @@ const AI = (() => {
   //   完全無料化を実現。
   // ────────────────────────────────────────
   // Jina AI Search（検索）
+  // APIキーがあれば認証ありで高レート、なければ無料tierで動作
   async function jinaSearch(query) {
-    const res = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, {
-      headers: { 'Accept': 'text/plain', 'Authorization': `Bearer ${CONFIG.JINA_API_KEY}` },
-    });
+    const headers = { 'Accept': 'text/plain' };
+    if (CONFIG.JINA_API_KEY) headers['Authorization'] = `Bearer ${CONFIG.JINA_API_KEY}`;
+    const res = await fetch(`https://s.jina.ai/${encodeURIComponent(query)}`, { headers });
     if (!res.ok) throw new Error(`Jina Search エラー: ${res.status}`);
     return await res.text();
   }
@@ -243,14 +244,14 @@ const AI = (() => {
   // 食べログ専用 Jina Reader
   // X-Target-Selector でデータセクションを狙い、ナビゲーションを除去
   async function jinaReadTabelog(url) {
-    const res = await fetch(`https://r.jina.ai/${url}`, {
-      headers: {
-        'Accept': 'text/plain',
-        'Authorization': `Bearer ${CONFIG.JINA_API_KEY}`,
-        'X-Target-Selector': '#rstdata, .rstinfo-table, #rst-data-head, .js-rstinfo-table',
-        'X-Remove-Selector': 'header, nav, footer, .modal-overlay, .lang-change, .breadcrumb, .rstlist-contents',
-      },
-    });
+    const headers = { 'Accept': 'text/plain' };
+    if (CONFIG.JINA_API_KEY) {
+      // APIキーがある場合のみカスタムヘッダーを付与（CORSプリフライトを回避）
+      headers['Authorization'] = `Bearer ${CONFIG.JINA_API_KEY}`;
+      headers['X-Target-Selector'] = '#rstdata, .rstinfo-table, #rst-data-head, .js-rstinfo-table';
+      headers['X-Remove-Selector'] = 'header, nav, footer, .modal-overlay, .lang-change, .breadcrumb, .rstlist-contents';
+    }
+    const res = await fetch(`https://r.jina.ai/${url}`, { headers });
     if (!res.ok) return null;
     const text = await res.text();
     return text.split('\n').filter(line =>
