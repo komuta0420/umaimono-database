@@ -13,6 +13,10 @@ const AUTH = (() => {
   let initAuthPromise = null;
   // トークン自動更新タイマーID
   let refreshTimer = null;
+  // ポップアップブロック等でトークン更新が失敗し、ユーザー操作での再認証が必要
+  let _reauthNeeded = false;
+  // 再認証が必要になったときのコールバック
+  let _onReauthNeeded = null;
 
   // ────────────────────────────────────────
   // 初期化: Google Identity Services をロード
@@ -39,7 +43,18 @@ const AUTH = (() => {
             expires_at: Date.now() + (response.expires_in * 1000),
           };
           localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
+          // 再認証が成功したらフラグをクリア
+          _reauthNeeded = false;
           scheduleTokenRefresh(currentToken.expires_at);
+        },
+        error_callback: (err) => {
+          // ポップアップブロック等のエラーをキャッチ
+          console.warn('OAuth ポップアップエラー:', err);
+          // 以前ログインしていた場合は再認証待ち状態にする（ログアウトしない）
+          if (localStorage.getItem(PERSISTENT_KEY)) {
+            _reauthNeeded = true;
+            if (_onReauthNeeded) _onReauthNeeded();
+          }
         },
       });
 
@@ -79,12 +94,14 @@ const AUTH = (() => {
             }
           };
 
-          // 4秒以内に応答がなければログアウト状態として起動
+          // 4秒以内に応答がなければ再認証待ち状態として起動
           setTimeout(() => {
             if (!settled) {
               settled = true;
               tokenClient.callback = originalCallback;
               initAuthPromise = null;
+              // ポップアップがブロックされた可能性が高い → 再認証待ちにする
+              _reauthNeeded = true;
               initResolve();
               resolve();
             }
@@ -130,6 +147,8 @@ const AUTH = (() => {
         };
         localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
         localStorage.setItem(PERSISTENT_KEY, '1'); // 永続フラグをセット
+        _reauthNeeded = false;
+        scheduleTokenRefresh(currentToken.expires_at);
         resolve(currentToken);
       };
 
@@ -175,6 +194,7 @@ const AUTH = (() => {
       });
     }
     currentToken = null;
+    _reauthNeeded = false;
     localStorage.removeItem(STORAGE_KEY);
     localStorage.removeItem(PERSISTENT_KEY); // 永続フラグを削除
   }
@@ -188,6 +208,11 @@ const AUTH = (() => {
       return currentToken.access_token;
     }
 
+    // 再認証待ち状態の場合、ユーザー操作を促すエラーを投げる
+    if (_reauthNeeded) {
+      throw new Error('REAUTH_NEEDED');
+    }
+
     // 期限切れ or 未ログイン → サイレント更新を試みる（ポップアップなし）
     const token = await login(false);
     return token.access_token;
@@ -197,7 +222,20 @@ const AUTH = (() => {
   // ログイン状態確認
   // ────────────────────────────────────────
   function isLoggedIn() {
-    return currentToken !== null && currentToken.expires_at > Date.now();
+    // トークンが有効、または再認証待ち（以前ログインしていた）ならtrue
+    if (currentToken !== null && currentToken.expires_at > Date.now()) return true;
+    if (_reauthNeeded && localStorage.getItem(PERSISTENT_KEY)) return true;
+    return false;
+  }
+
+  // 再認証が必要かどうか
+  function needsReauth() {
+    return _reauthNeeded;
+  }
+
+  // 再認証が必要になったときのコールバックを登録
+  function onReauthNeeded(callback) {
+    _onReauthNeeded = callback;
   }
 
   // ────────────────────────────────────────
@@ -212,5 +250,5 @@ const AUTH = (() => {
     return await res.json();
   }
 
-  return { init, login, logout, getAccessToken, isLoggedIn, getUserInfo };
+  return { init, login, logout, getAccessToken, isLoggedIn, getUserInfo, needsReauth, onReauthNeeded };
 })();

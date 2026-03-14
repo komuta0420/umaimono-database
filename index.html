@@ -476,6 +476,15 @@
     #error-toast { background: var(--danger); color: #fff; }
     #success-toast { background: var(--success); color: #fff; }
 
+    /* ─── 再認証バナー ─── */
+    .reauth-banner {
+      display: none; position: fixed; top: 0; left: 0; right: 0;
+      background: var(--accent); color: var(--bg); text-align: center;
+      padding: 10px 16px; font-size: 14px; font-weight: 600;
+      cursor: pointer; z-index: 500;
+    }
+    .reauth-banner.visible { display: block; }
+
     /* ─── Skeleton ─── */
     .skeleton {
       background: linear-gradient(90deg, var(--surface) 25%, var(--surface2) 50%, var(--surface) 75%);
@@ -967,6 +976,7 @@
 <!-- ─── Toast ─── -->
 <div class="toast" id="error-toast"></div>
 <div class="toast" id="success-toast"></div>
+<div class="reauth-banner" id="reauth-banner" onclick="doReauth()">セッション期限切れ — タップして再認証</div>
 
 <!-- ─── Scripts ─── -->
 <script src="config.example.js"></script>
@@ -1001,7 +1011,13 @@ let filterGenreIds = [];
 async function init() {
   try {
     // GIS スクリプトロード確認・保存済みトークン復元
+    AUTH.onReauthNeeded(showReauthBanner);
     await AUTH.init();
+
+    // 起動時に既に再認証が必要な場合（ポップアップブロック等）
+    if (AUTH.needsReauth()) {
+      showReauthBanner();
+    }
 
     if (AUTH.isLoggedIn()) {
       // ログイン済み（オーナー）: Drive初期化してデータロード
@@ -1066,10 +1082,31 @@ function closeLoginMenu() {
   if (menu) menu.classList.remove('open');
 }
 
+// 再認証バナー表示
+function showReauthBanner() {
+  document.getElementById('reauth-banner').classList.add('visible');
+}
+
+// 再認証（ユーザークリック = ジェスチャーあり → ポップアップ許可される）
+async function doReauth() {
+  try {
+    await AUTH.login(false);
+    document.getElementById('reauth-banner').classList.remove('visible');
+    await DRIVE.driveInit();
+    await loadData();
+    await renderList();
+    updateOwnerUI();
+    showSuccess('再認証しました');
+  } catch (e) {
+    showError('再認証に失敗しました: ' + e.message);
+  }
+}
+
 async function doLoginAction() {
   closeLoginMenu();
   if (AUTH.isLoggedIn()) {
     AUTH.logout();
+    document.getElementById('reauth-banner').classList.remove('visible');
     updateOwnerUI();
     showSuccess('ログアウトしました');
   } else {
