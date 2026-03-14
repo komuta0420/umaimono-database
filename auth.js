@@ -1,4 +1,4 @@
-// auth.js - Google OAuth 2.0 認証
+// auth.js - Google OAuth 2.0 認証（Authorization Code Flow + Cloudflare Worker）
 
 const AUTH = (() => {
   // OAuth 2.0 スコープ（Drive ファイル読み書き）
@@ -7,10 +7,8 @@ const AUTH = (() => {
   // ログイン状態を永続化するフラグ（ページ再読み込み後も自動再ログインするため）
   const PERSISTENT_KEY = 'restaurant_db_logged_in';
 
-  let tokenClient = null;
+  let codeClient = null;
   let currentToken = null;
-  // init()のサイレント再ログインが完了するまで待機するためのPromise
-  let initAuthPromise = null;
   // トークン自動更新タイマーID
   let refreshTimer = null;
   // ポップアップブロック等でトークン更新が失敗し、ユーザー操作での再認証が必要
@@ -19,152 +17,161 @@ const AUTH = (() => {
   let _onReauthNeeded = null;
 
   // ────────────────────────────────────────
-  // 初期化: Google Identity Services をロード
+  // Worker API 呼び出しヘルパー
   // ────────────────────────────────────────
-  async function init() {
-    return new Promise((resolve, reject) => {
-      // GIS (Google Identity Services) スクリプトのロード確認
-      if (typeof google === 'undefined' || !google.accounts) {
-        reject(new Error('Google Identity Services が読み込まれていません'));
-        return;
-      }
-
-      tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: CONFIG.GOOGLE_CLIENT_ID,
-        scope: SCOPES,
-        callback: (response) => {
-          if (response.error) {
-            console.error('OAuth エラー:', response.error);
-            return;
-          }
-          // トークンをメモリと localStorage に保存
-          currentToken = {
-            access_token: response.access_token,
-            expires_at: Date.now() + (response.expires_in * 1000),
-          };
-          localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
-          // 再認証が成功したらフラグをクリア
-          _reauthNeeded = false;
-          scheduleTokenRefresh(currentToken.expires_at);
-        },
-        error_callback: (err) => {
-          // ポップアップブロック等のエラーをキャッチ
-          console.warn('OAuth ポップアップエラー:', err);
-          // 以前ログインしていた場合は再認証待ち状態にする（ログアウトしない）
-          if (localStorage.getItem(PERSISTENT_KEY)) {
-            _reauthNeeded = true;
-            if (_onReauthNeeded) _onReauthNeeded();
-          }
-        },
-      });
-
-      // 保存済みトークンを復元
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          // 有効期限チェック（5分の余裕を持たせる）
-          if (parsed.expires_at > Date.now() + 5 * 60 * 1000) {
-            currentToken = parsed;
-            scheduleTokenRefresh(currentToken.expires_at);
-            resolve();
-            return;
-          }
-        } catch (e) {
-          localStorage.removeItem(STORAGE_KEY);
-        }
-      }
-
-      // トークン期限切れでも永続フラグがあればサイレント再ログインを試みる
-      // （Googleにサインイン済みなら画面操作なしで復帰できる）
-      if (localStorage.getItem(PERSISTENT_KEY)) {
-        let settled = false;
-        const originalCallback = tokenClient.callback;
-
-        // login()が競合しないよう、完了を追跡するPromiseを保持する
-        initAuthPromise = new Promise((initResolve) => {
-          tokenClient.callback = (response) => {
-            originalCallback(response);
-            if (!settled) {
-              settled = true;
-              tokenClient.callback = originalCallback;
-              initAuthPromise = null;
-              initResolve();
-              resolve();
-            }
-          };
-
-          // 4秒以内に応答がなければ再認証待ち状態として起動
-          setTimeout(() => {
-            if (!settled) {
-              settled = true;
-              tokenClient.callback = originalCallback;
-              initAuthPromise = null;
-              // ポップアップがブロックされた可能性が高い → 再認証待ちにする
-              _reauthNeeded = true;
-              initResolve();
-              resolve();
-            }
-          }, 4000);
-        });
-
-        tokenClient.requestAccessToken({ prompt: '' });
-      } else {
-        resolve();
-      }
+  async function workerFetch(endpoint, body) {
+    const res = await fetch(`${CONFIG.WORKER_URL}${endpoint}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
     });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data.error || `Worker error: ${res.status}`);
+    }
+    return data;
   }
 
   // ────────────────────────────────────────
-  // ログイン（トークン要求）
-  // forceConsent=true: 初回ログイン時（同意画面を表示）
-  // forceConsent=false: 自動更新時（サイレント更新を試みる）
+  // authorization code → tokens（Worker経由）
   // ────────────────────────────────────────
-  async function login(forceConsent = true) {
-    // init()のサイレント再ログインが進行中なら完了を待つ（競合防止）
-    if (initAuthPromise) await initAuthPromise;
+  async function handleCodeResponse(response) {
+    if (response.error) {
+      throw new Error(`認証エラー: ${response.error}`);
+    }
 
-    // init()のサイレント再ログインで既にトークンが取得できていれば即返す
+    // Worker にコードを送ってトークンと交換
+    const data = await workerFetch('/auth/token', { code: response.code });
+
+    // 既存の refresh_token を保持（Googleは2回目以降返さない場合がある）
+    const saved = getSavedToken();
+    const refreshToken = data.refresh_token || (saved && saved.refresh_token) || null;
+
+    currentToken = {
+      access_token: data.access_token,
+      refresh_token: refreshToken,
+      expires_at: Date.now() + (data.expires_in * 1000),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
+    localStorage.setItem(PERSISTENT_KEY, '1');
+    _reauthNeeded = false;
+    scheduleTokenRefresh(currentToken.expires_at);
+  }
+
+  // ────────────────────────────────────────
+  // refresh_token → new access_token（Worker経由、ポップアップ不要）
+  // ────────────────────────────────────────
+  async function refreshAccessToken() {
+    const saved = getSavedToken();
+    if (!saved || !saved.refresh_token) {
+      throw new Error('refresh_token がありません');
+    }
+
+    const data = await workerFetch('/auth/refresh', { refresh_token: saved.refresh_token });
+
+    currentToken = {
+      access_token: data.access_token,
+      refresh_token: saved.refresh_token,
+      expires_at: Date.now() + (data.expires_in * 1000),
+    };
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
+    _reauthNeeded = false;
+    scheduleTokenRefresh(currentToken.expires_at);
+  }
+
+  // ────────────────────────────────────────
+  // localStorage からトークンを読み出す
+  // ────────────────────────────────────────
+  function getSavedToken() {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  }
+
+  // ────────────────────────────────────────
+  // 初期化: Google Identity Services をロード
+  // ────────────────────────────────────────
+  async function init() {
+    // GIS (Google Identity Services) スクリプトのロード確認
+    if (typeof google === 'undefined' || !google.accounts) {
+      throw new Error('Google Identity Services が読み込まれていません');
+    }
+
+    // Authorization Code Client を初期化（コールバックは login() で設定）
+    codeClient = google.accounts.oauth2.initCodeClient({
+      client_id: CONFIG.GOOGLE_CLIENT_ID,
+      scope: SCOPES,
+      ux_mode: 'popup',
+      callback: () => {}, // login() で上書きする
+    });
+
+    // 保存済みトークンを復元
+    const saved = getSavedToken();
+    if (saved) {
+      // アクセストークンがまだ有効（5分の余裕）
+      if (saved.expires_at > Date.now() + 5 * 60 * 1000) {
+        currentToken = saved;
+        scheduleTokenRefresh(currentToken.expires_at);
+        return;
+      }
+
+      // 期限切れだが refresh_token がある → サイレント更新（HTTP のみ）
+      if (saved.refresh_token) {
+        try {
+          await refreshAccessToken();
+          console.log('トークンをサイレント更新しました');
+          return;
+        } catch (e) {
+          console.warn('サイレント更新失敗:', e);
+          // refresh_token が失効 → 再認証が必要
+          _reauthNeeded = true;
+          if (_onReauthNeeded) _onReauthNeeded();
+          return;
+        }
+      }
+    }
+
+    // 永続フラグがあるが refresh_token がない（旧形式トークン）→ 再認証を促す
+    if (localStorage.getItem(PERSISTENT_KEY)) {
+      _reauthNeeded = true;
+      if (_onReauthNeeded) _onReauthNeeded();
+    }
+  }
+
+  // ────────────────────────────────────────
+  // ログイン（ユーザー操作で呼ばれる）
+  // ────────────────────────────────────────
+  async function login() {
+    // 既に有効なトークンがあればそのまま返す
     if (currentToken && currentToken.expires_at > Date.now() + 60 * 1000) {
       return currentToken;
     }
 
-    return new Promise((resolve, reject) => {
-      if (!tokenClient) {
-        reject(new Error('認証クライアントが初期化されていません'));
-        return;
-      }
+    if (!codeClient) {
+      throw new Error('認証クライアントが初期化されていません');
+    }
 
-      // コールバックを上書きして Promise で解決
-      tokenClient.callback = (response) => {
-        if (response.error) {
-          reject(new Error(`認証エラー: ${response.error}`));
-          return;
+    return new Promise((resolve, reject) => {
+      // コールバックを設定してコードリクエスト
+      codeClient.callback = async (response) => {
+        try {
+          await handleCodeResponse(response);
+          resolve(currentToken);
+        } catch (e) {
+          reject(e);
         }
-        currentToken = {
-          access_token: response.access_token,
-          expires_at: Date.now() + (response.expires_in * 1000),
-        };
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(currentToken));
-        localStorage.setItem(PERSISTENT_KEY, '1'); // 永続フラグをセット
-        _reauthNeeded = false;
-        scheduleTokenRefresh(currentToken.expires_at);
-        resolve(currentToken);
       };
 
-      // 有効なトークンがあれば即座に解決、なければ（再）取得
-      if (currentToken && currentToken.expires_at > Date.now() + 60 * 1000) {
-        resolve(currentToken);
-      } else {
-        // 初回は同意画面を表示、自動更新時はサイレント更新を試みる
-        tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
-      }
+      codeClient.requestCode();
     });
   }
 
   // ────────────────────────────────────────
   // トークン自動更新スケジューラー
-  // 期限5分前にサイレント更新を実行し、ページを開いたままでも継続ログイン
+  // 期限5分前にWorker経由でサイレント更新（ポップアップ不要）
   // ────────────────────────────────────────
   function scheduleTokenRefresh(expiresAt) {
     if (refreshTimer) clearTimeout(refreshTimer);
@@ -172,10 +179,12 @@ const AUTH = (() => {
     const delay = Math.max(30 * 1000, expiresAt - Date.now() - 5 * 60 * 1000);
     refreshTimer = setTimeout(async () => {
       try {
-        await login(false);
+        await refreshAccessToken();
         console.log('トークンを自動更新しました');
       } catch (e) {
         console.warn('トークン自動更新失敗:', e);
+        _reauthNeeded = true;
+        if (_onReauthNeeded) _onReauthNeeded();
       }
     }, delay);
   }
@@ -183,20 +192,26 @@ const AUTH = (() => {
   // ────────────────────────────────────────
   // ログアウト
   // ────────────────────────────────────────
-  function logout() {
+  async function logout() {
     if (refreshTimer) {
       clearTimeout(refreshTimer);
       refreshTimer = null;
     }
-    if (currentToken) {
-      google.accounts.oauth2.revoke(currentToken.access_token, () => {
+
+    // Worker経由でトークンを失効
+    if (currentToken && currentToken.access_token) {
+      try {
+        await workerFetch('/auth/revoke', { token: currentToken.access_token });
         console.log('トークンを失効させました');
-      });
+      } catch (e) {
+        console.warn('トークン失効エラー:', e);
+      }
     }
+
     currentToken = null;
     _reauthNeeded = false;
     localStorage.removeItem(STORAGE_KEY);
-    localStorage.removeItem(PERSISTENT_KEY); // 永続フラグを削除
+    localStorage.removeItem(PERSISTENT_KEY);
   }
 
   // ────────────────────────────────────────
@@ -208,14 +223,21 @@ const AUTH = (() => {
       return currentToken.access_token;
     }
 
-    // 再認証待ち状態の場合、ユーザー操作を促すエラーを投げる
-    if (_reauthNeeded) {
-      throw new Error('REAUTH_NEEDED');
+    // refresh_token があればサイレント更新
+    const saved = getSavedToken();
+    if (saved && saved.refresh_token) {
+      try {
+        await refreshAccessToken();
+        return currentToken.access_token;
+      } catch (e) {
+        _reauthNeeded = true;
+        if (_onReauthNeeded) _onReauthNeeded();
+        throw new Error('REAUTH_NEEDED');
+      }
     }
 
-    // 期限切れ or 未ログイン → サイレント更新を試みる（ポップアップなし）
-    const token = await login(false);
-    return token.access_token;
+    // 再認証待ち状態の場合、ユーザー操作を促すエラーを投げる
+    throw new Error('REAUTH_NEEDED');
   }
 
   // ────────────────────────────────────────

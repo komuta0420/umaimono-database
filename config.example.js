@@ -8,7 +8,7 @@ const CONFIG_DEFAULT = {
   // Google Cloud Console で取得・設定済み
   // https://console.cloud.google.com/
   // =============================
-  GOOGLE_CLIENT_ID: '25368500704-qipjp34h61oemh8u8d1pmikfbb1jjs32.apps.googleusercontent.com',
+  GOOGLE_CLIENT_ID: '25368500704-qflvpoth1qdisoebk1fc3vtf9q3tmntp.apps.googleusercontent.com',
 
   // =============================
   // オーナーの Google アカウント（公開しないため空欄）
@@ -53,4 +53,10 @@ const CONFIG_DEFAULT = {
   GEMINI_API_KEY_FREE: '',
   QWEN_API_KEY: '',
   CLAUDE_API_KEY: '',
+
+  // =============================
+  // Cloudflare Worker URL（OAuth トークン交換プロキシ）
+  // Worker デプロイ後に取得できるURL
+  // =============================
+  WORKER_URL: 'https://food-shop-auth.kcc-komtan.workers.dev',
 };
