@@ -193,6 +193,8 @@ const DRIVE = (() => {
         }
       );
       const file = await res.json();
+      // ビューア向けに公開設定（thumbnail URLでアクセスするため必要）
+      await makePublic(file.id);
       return file.id;
     }
   }
