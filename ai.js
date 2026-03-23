@@ -329,6 +329,13 @@ JSONのみを返してください。余分なテキストは不要です。
 以下の検索結果を参照して、「${storeName}」${stationHint ? `（${stationHint.trim()}）` : ''}に該当する飲食店の候補を最大5件、JSON配列で返してください。
 情報が不明な項目は null にしてください。
 
+# 候補選定ルール
+1. 店名が完全一致 or ほぼ一致する結果を最優先
+2. 駅名・エリアが指定されている場合、近辺の店を優先
+3. 同名の店が複数ある場合、地域で区別して全て候補に含める
+4. 飲食店以外の結果は除外
+5. 該当なしなら空配列 [] を返す
+
 [
   {
     "name": "店名",
@@ -349,7 +356,7 @@ JSONのみを返してください。余分なテキストは不要です。
       if (CONFIG.USE_GEMINI_GROUNDING && provider === GEMINI) {
         // Gemini grounding モード: Google検索を使って1回で候補を取得
         result = await GEMINI.requestWithSearch(
-          `「${storeName}」${stationHint ? `（${stationHint.trim()}）` : ''}という飲食店をGoogle検索して、候補を最大5件JSON配列で返してください。\n\n` + extractPrompt
+          `「${storeName}」${stationHint ? `（${stationHint.trim()}）` : ''}という店をGoogle検索して、候補を最大5件JSON配列で返してください。\n\n` + extractPrompt
         );
       } else if (provider === GEMINI) {
         // Jina Search + Flash Lite モード（USE_GEMINI_GROUNDING=false 時）
@@ -444,49 +451,90 @@ JSONのみを返してください。余分なテキストは不要です。
       const provider = getProvider();
       let result;
       if (CONFIG.USE_GEMINI_GROUNDING && provider === GEMINI) {
-        // Gemini grounding モード: Google検索を使って1回で全情報取得
-        // Jina用の「3セクション」指示は不要なのでGrounding専用プロンプトを使う
-        // shop_instagramハンドルからurl_instagramを直接構築できる場合はスキップ
+        // Gemini grounding モード: 食べログ特化で検索 + 必要時Instagram補完
         const knownInstagramUrl = shop_instagram
           ? `https://www.instagram.com/${shop_instagram.replace(/^@/, '')}/`
           : null;
 
-        const groundingPrompt = `
-「${name}」（エリア: ${area || '不明'}）という飲食店について、以下の手順で情報を収集してください。
-
-1. まず「${name} ${area || ''} 食べログ」でGoogle検索して食べログページを探す
-${knownInstagramUrl ? '' : `2. 次に「${name} ${area || ''} Instagram 公式サイト」でGoogle検索してSNS・公式URLを探す`}
-
-# 食べログURL 厳守事項
-- 「tabelog.com/[都道府県]/[エリア]/[数字]/」形式のURLのみ採用
-- エリア（${area || '不明'}）が一致する店であることを確認
-- 確信が持てない場合は null（推測・生成禁止）
-
-# 全般的な厳守事項
-- 検索結果に含まれる情報だけを記入する
-- 不明な項目は null にする
-- URLは実際に存在するものだけ記入し、推測・補完・生成は絶対にしない
+        // ── Call 1: 食べログ特化（1RPD）──
+        const tabelogPrompt = `
+「${name}」（${area || ''}）の食べログページをGoogle検索で探してください。
 
 # 出力形式 (JSON)
 {
+  "url_tabelog": "食べログURL（検索結果に実在するtabelog.comのURLのみ。推測・生成禁止）",
   "station": "最寄り駅名",
   "area": "${area || 'エリア名'}",
-  "address": "正確な住所（〒含む）",
+  "address": "住所（〒含む）",
   "hours": "営業時間",
   "closed": "定休日",
-  "url_tabelog": "食べログURL",
-  "url_instagram": ${knownInstagramUrl ? `"${knownInstagramUrl}"` : '"Instagram URL（見つからなければ null）"'},
-  "url_official": "公式サイトURL（tabelog/instagram以外）",
-  "shop_instagram": ${shop_instagram ? `"${shop_instagram}"` : 'null'},
+  "url_instagram": "検索結果にInstagram URLがあれば記入（なければnull）",
+  "url_official": "検索結果に公式サイトURLがあれば記入（なければnull）",
+  "shop_instagram": "Instagramハンドル（なければnull）",
   "tags": ["特徴"],
   "memo": "特記事項"
 }
 
-JSONのみを返してください。余分なテキストは不要です。
+# 注意
+- url_tabelog は検索結果に実際に表示された tabelog.com のURLのみ記入する
+- 存在しないURLの推測・補完・生成は絶対にしない
+- 見つからない項目は null
+
+JSONのみを返してください。
 `;
-        result = await GEMINI.requestWithSearch(groundingPrompt);
-        // shop_instagramが既知の場合は確実にurl_instagramをセット
-        if (knownInstagramUrl) result.url_instagram = knownInstagramUrl;
+        try {
+          result = await GEMINI.requestWithSearch(tabelogPrompt);
+        } catch (e) {
+          console.error('食べログ検索エラー:', e);
+          result = {};
+        }
+
+        // knownInstagramUrl があれば確実にセット
+        if (knownInstagramUrl) {
+          result.url_instagram = knownInstagramUrl;
+          result.shop_instagram = shop_instagram;
+        }
+
+        // ── Call 2: Instagramが取れなかった場合のみ補完（+1RPD）──
+        const needsInstagram = !result.url_instagram && !knownInstagramUrl;
+        if (needsInstagram) {
+          const snsPrompt = `
+「${name}」（${area || ''}）のInstagramアカウントと公式サイトをGoogle検索で探してください。
+
+# 出力形式 (JSON)
+{
+  "url_instagram": "instagram.com のURL（検索結果に実在するもののみ）",
+  "url_official": "公式サイトURL（tabelog.com / instagram.com 以外）",
+  "shop_instagram": "Instagramハンドル（@付き。なければnull）",
+  "tags": ["特徴"],
+  "memo": "特記事項"
+}
+
+# 注意
+- URLは検索結果に実際に表示されたもののみ記入する
+- 存在しないURLの推測・補完・生成は絶対にしない
+- 見つからない項目は null
+
+JSONのみを返してください。
+`;
+          try {
+            const snsResult = await GEMINI.requestWithSearch(snsPrompt);
+            // 不足フィールドのみ補完（Call 1の結果を上書きしない）
+            for (const key of ['url_instagram', 'url_official', 'shop_instagram']) {
+              if (!result[key] && snsResult[key]) result[key] = snsResult[key];
+            }
+            // tags/memo: Call 1が空の場合はCall 2で上書き
+            if ((!result.tags || result.tags.length === 0) && snsResult.tags?.length > 0) {
+              result.tags = snsResult.tags;
+            }
+            if (!result.memo && snsResult.memo) {
+              result.memo = snsResult.memo;
+            }
+          } catch (e) {
+            console.error('SNS検索エラー:', e);
+            // Call 1の結果だけで続行
+          }
+        }
       } else if (provider === GEMINI) {
         // Jina Search + Flash Lite モード（USE_GEMINI_GROUNDING=false 時）
         const [tabelogText, snsText] = await Promise.all([
