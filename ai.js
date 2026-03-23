@@ -405,7 +405,7 @@ JSONのみを返してください。余分なテキストは不要です。
   //         url_tabelog, url_instagram, url_official,
   //         shop_instagram, area, tags, memo }
   // ────────────────────────────────────────
-  async function enrichStoreData({ name, search_query, shop_instagram, area } = {}) {
+  async function enrichStoreData({ name, search_query, shop_instagram, area, station } = {}) {
     // 1. 検索キーワードを最適化（エリア情報を強制的に入れる）
     const baseQuery = search_query || name;
     const optimizedQuery = area ? `${area} ${baseQuery}` : baseQuery;
@@ -419,15 +419,9 @@ ${shop_instagram ? `店の公式Instagram: ${shop_instagram}` : ''}
 - 「食べログページ」: address / hours / closed / station / url_tabelog を探す
 - 「Instagram・公式サイト検索」: url_instagram（instagram.com/...）と url_official（tabelog/instagram 以外のURL）を探す
 
-# 食べログURL 厳守事項
-- 「tabelog.com/.../{数字}/」形式のURLのみ採用
-- エリア（${area || '不明'}）が一致することを確認
-- 確信が持てない場合は null（推測・生成禁止）
-
-# 全般的な厳守事項
-- 検索結果に含まれる情報だけを記入する
+# 注意
+- URLは検索結果に実際に表示されたもののみ記入する。推測・補完・生成は絶対にしない
 - 不明な項目は null にする
-- URLは検索結果に実際に存在するものだけ記入し、推測・補完・生成は絶対にしない
 
 # 出力形式 (JSON)
 {
@@ -451,46 +445,64 @@ JSONのみを返してください。余分なテキストは不要です。
       const provider = getProvider();
       let result;
       if (CONFIG.USE_GEMINI_GROUNDING && provider === GEMINI) {
-        // Gemini grounding モード: 食べログ特化で検索 + 必要時Instagram補完
+        // Gemini grounding モード: 店舗情報を広く検索 + 必要時Instagram補完
         const knownInstagramUrl = shop_instagram
           ? `https://www.instagram.com/${shop_instagram.replace(/^@/, '')}/`
           : null;
 
         // ── Call 1: 店舗情報を広く検索（1RPD）──
+        const locationHint = [area, station ? `${station}駅` : ''].filter(Boolean).join('・');
+        const searchKeyword = search_query || name;
         const mainPrompt = `
-「${name}」${area ? `（${area}）` : ''}という飲食店の詳細情報をGoogle検索で調べてください。
+「${searchKeyword}」の詳細情報をGoogle検索で調べてください。
 
 # 検索で探してほしい情報
 - 住所・最寄り駅・営業時間・定休日（Google Mapsのナレッジパネルや食べログ等から）
 - 食べログのページURL（検索結果に tabelog.com のURLがあれば）
 - InstagramアカウントURL・公式サイトURL（検索結果にあれば）
+${locationHint ? `\n# 重要: 必ず「${locationHint}」にある「${name}」の情報を返してください。同名・別店舗の情報を混同しないでください。` : ''}
 
 # 出力形式 (JSON)
 {
-  "url_tabelog": "食べログURL（検索結果に実在するtabelog.comのURLのみ）",
+  "url_tabelog": "「${name}」の食べログページURL（後述の注意を必ず守ること）",
   "station": "最寄り駅名",
   "area": "${area || 'エリア名'}",
   "address": "住所（〒含む）",
   "hours": "営業時間",
   "closed": "定休日",
-  "url_instagram": "Instagram URL（検索結果にあれば）",
-  "url_official": "公式サイトURL（tabelog/instagram以外）",
+  "url_instagram": "「${name}」のInstagram URL（検索結果にあれば）",
+  "url_official": "「${name}」の公式サイトURL（tabelog/instagram以外）",
   "shop_instagram": "Instagramハンドル（@付き）",
   "tags": ["特徴"],
   "memo": "特記事項"
 }
 
-# 注意
-- URLは検索結果に実際に表示されたもののみ記入する。推測・補完・生成は絶対にしない
-- 見つからない項目は null
+# URL記入の注意（厳守）
+- url_tabelog は「${name}」自体のページURLのみ記入する。検索結果の「周辺のお店」「関連店舗」「おすすめ」等に載っている別店舗のURLは絶対に記入しない
+- 全てのURLは「${name}」のものだけを記入する。別店舗のURLを混入させない
+- 見つからない項目は null（別店舗の情報で埋めるくらいなら null にする）
 
 JSONのみを返してください。
 `;
         try {
-          result = await GEMINI.requestWithSearch(tabelogPrompt);
+          result = await GEMINI.requestWithSearch(mainPrompt);
         } catch (e) {
-          console.error('食べログ検索エラー:', e);
+          console.error('店舗情報検索エラー:', e);
           result = {};
+        }
+
+        // ── URL妥当性チェック: 食べログURLが正しい形式か検証 ──
+        if (result.url_tabelog) {
+          const tabelogValid = /^https?:\/\/tabelog\.com\/[a-z]+\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[0-9]+\/?/.test(result.url_tabelog);
+          if (!tabelogValid) {
+            console.warn('食べログURL形式不正、除外:', result.url_tabelog);
+            result.url_tabelog = null;
+          }
+        }
+        // Instagram URLの形式チェック
+        if (result.url_instagram && !/^https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/.test(result.url_instagram)) {
+          console.warn('Instagram URL形式不正、除外:', result.url_instagram);
+          result.url_instagram = null;
         }
 
         // knownInstagramUrl があれば確実にセット
@@ -503,7 +515,7 @@ JSONのみを返してください。
         const needsInstagram = !result.url_instagram && !knownInstagramUrl;
         if (needsInstagram) {
           const snsPrompt = `
-「${name}」（${area || ''}）のInstagramアカウントと公式サイトをGoogle検索で探してください。
+「${name}」${locationHint ? `（${locationHint}）` : ''}のInstagramアカウントと公式サイトをGoogle検索で探してください。
 
 # 出力形式 (JSON)
 {
@@ -523,6 +535,16 @@ JSONのみを返してください。
 `;
           try {
             const snsResult = await GEMINI.requestWithSearch(snsPrompt);
+            // Instagram URL形式チェック
+            if (snsResult.url_instagram && !/^https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/.test(snsResult.url_instagram)) {
+              console.warn('Call 2: Instagram URL形式不正、除外:', snsResult.url_instagram);
+              snsResult.url_instagram = null;
+            }
+            // 公式サイトURL形式チェック
+            if (snsResult.url_official && !/^https?:\/\//.test(snsResult.url_official)) {
+              console.warn('Call 2: 公式サイトURL形式不正、除外:', snsResult.url_official);
+              snsResult.url_official = null;
+            }
             // 不足フィールドのみ補完（Call 1の結果を上書きしない）
             for (const key of ['url_instagram', 'url_official', 'shop_instagram']) {
               if (!result[key] && snsResult[key]) result[key] = snsResult[key];

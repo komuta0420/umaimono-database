@@ -1886,10 +1886,12 @@ async function selectCandidate(index) {
   const candidate = window._searchCandidates[index];
   showAiLoading('詳細情報を収集中…');
   try {
+    const genreHint = candidate.genres?.length ? ' ' + candidate.genres[0] : '';
     const details = await AI.enrichStoreData({
       name: candidate.name,
-      search_query: candidate.name + (candidate.area ? ' ' + candidate.area : ''),
+      search_query: candidate.name + (candidate.area ? ' ' + candidate.area : '') + genreHint,
       area: candidate.area || null,
+      station: candidate.station || null,
       shop_instagram: null,
     });
     hideAiLoading();
