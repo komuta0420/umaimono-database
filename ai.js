@@ -456,28 +456,32 @@ JSONのみを返してください。余分なテキストは不要です。
           ? `https://www.instagram.com/${shop_instagram.replace(/^@/, '')}/`
           : null;
 
-        // ── Call 1: 食べログ特化（1RPD）──
-        const tabelogPrompt = `
-「${name}」（${area || ''}）の食べログページをGoogle検索で探してください。
+        // ── Call 1: 店舗情報を広く検索（1RPD）──
+        const mainPrompt = `
+「${name}」${area ? `（${area}）` : ''}という飲食店の詳細情報をGoogle検索で調べてください。
+
+# 検索で探してほしい情報
+- 住所・最寄り駅・営業時間・定休日（Google Mapsのナレッジパネルや食べログ等から）
+- 食べログのページURL（検索結果に tabelog.com のURLがあれば）
+- InstagramアカウントURL・公式サイトURL（検索結果にあれば）
 
 # 出力形式 (JSON)
 {
-  "url_tabelog": "食べログURL（検索結果に実在するtabelog.comのURLのみ。推測・生成禁止）",
+  "url_tabelog": "食べログURL（検索結果に実在するtabelog.comのURLのみ）",
   "station": "最寄り駅名",
   "area": "${area || 'エリア名'}",
   "address": "住所（〒含む）",
   "hours": "営業時間",
   "closed": "定休日",
-  "url_instagram": "検索結果にInstagram URLがあれば記入（なければnull）",
-  "url_official": "検索結果に公式サイトURLがあれば記入（なければnull）",
-  "shop_instagram": "Instagramハンドル（なければnull）",
+  "url_instagram": "Instagram URL（検索結果にあれば）",
+  "url_official": "公式サイトURL（tabelog/instagram以外）",
+  "shop_instagram": "Instagramハンドル（@付き）",
   "tags": ["特徴"],
   "memo": "特記事項"
 }
 
 # 注意
-- url_tabelog は検索結果に実際に表示された tabelog.com のURLのみ記入する
-- 存在しないURLの推測・補完・生成は絶対にしない
+- URLは検索結果に実際に表示されたもののみ記入する。推測・補完・生成は絶対にしない
 - 見つからない項目は null
 
 JSONのみを返してください。
