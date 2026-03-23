@@ -89,12 +89,45 @@ const AI = (() => {
       // レスポンスからJSON部分を抽出
       const jsonMatch = text.match(/```json\n?([\s\S]*?)\n?```/) ||
         text.match(/(\{[\s\S]*\})/);
+      let result;
       if (jsonMatch) {
-        try { return JSON.parse(jsonMatch[1]); } catch { /* fallthrough */ }
+        try { result = JSON.parse(jsonMatch[1]); } catch { /* fallthrough */ }
       }
-      try { return JSON.parse(text); } catch {
-        return { raw: text };
+      if (!result) {
+        try { result = JSON.parse(text); } catch {
+          result = { raw: text };
+        }
       }
+
+      // groundingMetadata からURLを直接抽出（Geminiのテキスト生成に頼らない）
+      const chunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+      const groundingUrls = chunks.map(c => c.web?.uri).filter(Boolean);
+      if (groundingUrls.length > 0 && typeof result === 'object' && !result.raw) {
+        // 食べログURL: Geminiが返さなかった場合、groundingChunksから補完
+        if (!result.url_tabelog) {
+          const tabelogUrl = groundingUrls.find(u => /tabelog\.com\/[a-z]+\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[0-9]+/.test(u));
+          if (tabelogUrl) result.url_tabelog = tabelogUrl;
+        }
+        // Instagram URL: 同様に補完
+        if (!result.url_instagram) {
+          const igUrl = groundingUrls.find(u => /instagram\.com\/[a-zA-Z0-9_.]+\/?$/.test(u));
+          if (igUrl) result.url_instagram = igUrl;
+        }
+        // 公式サイトURL: tabelog/instagram以外のURLで補完
+        if (!result.url_official) {
+          const officialUrl = groundingUrls.find(u =>
+            !u.includes('tabelog.com') &&
+            !u.includes('instagram.com') &&
+            !u.includes('google.com') &&
+            !u.includes('youtube.com') &&
+            !u.includes('twitter.com') &&
+            !u.includes('facebook.com')
+          );
+          if (officialUrl) result.url_official = officialUrl;
+        }
+      }
+
+      return result;
     },
   };
 
