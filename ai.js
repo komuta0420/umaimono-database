@@ -511,7 +511,7 @@ JSONのみを返してください。
 
         // ────── Call B: 食べログURL専用 ──────
         const tabelogPrompt = `
-「${name}${locationHint ? ` ${locationHint}` : ''} 食べログ」でGoogle検索を実行し、「${name}」自身の食べログページを特定してください。
+「${name}${locationHint ? ` ${locationHint}` : ''} 食べログ」でGoogle検索を実行し、「${name}」の食べログページを特定してください。
 
 # 出力形式 (JSON)
 {
@@ -519,13 +519,18 @@ JSONのみを返してください。
   "page_title": "検索結果に表示されていた食べログページの完全なタイトル（店名・エリア・ジャンル等を含むもの）"
 }
 
+# 採用基準（柔軟）
+- 食べログでは「ジャンルプレフィックス」（例: 名曲喫茶、立ち飲み等）が省略されていることがある
+- 店名の主要部分（固有名詞部分）がタイトルに含まれていれば同じ店と判断してよい
+  - 例: 入力「名曲喫茶ヴィオロン」、食べログタイトル「ヴィオロン (VIOLON)」 → 同じ店として url_tabelog を返す
+- エリア（${locationHint || area || '不明'}）と一致するページであれば、より確実
+- 別エリアの同名店は採用しない
+
 # 絶対ルール
 - 必ず google_search ツールで実検索を実行すること
-- 記憶や学習データからURLを生成することは厳禁
-- 検索結果のタイトルに「${name}」が含まれるページのURLのみ採用する
+- 記憶や学習データだけからURLを生成することは厳禁
 - 「周辺のお店」「ランキング」「関連店舗」のリンクは絶対に採用しない（それらは別店舗）
-- 「${name}」の食べログページが検索結果に見つからない場合、両フィールドとも null
-- URLが正しいか自信がない場合は null（間違ったURLは絶対に書かない）
+- 検索結果に該当ページが見つからなければ url_tabelog は null
 
 JSONのみを返してください。
 `;
@@ -582,29 +587,62 @@ JSONのみを返してください。
         console.table(callB.groundingChunks.map(c => ({ uri: c.web?.uri, title: c.web?.title })));
         console.groupEnd();
 
-        // 採用条件（全て満たす必要あり）:
+        // 名前マッチ判定（柔軟）
+        // - 店名のジャンル接頭辞（名曲喫茶・立ち飲み・カフェ・喫茶店 等）を除いた固有名詞部分でマッチ
+        // - 双方向に部分一致でOK（title⊂name または name⊂title）
+        const stripGenrePrefix = (s) =>
+          s.replace(/^(名曲喫茶|立ち飲み|立飲み|大衆|町中華|和食|洋食|喫茶店|カフェ|レストラン|居酒屋|バー|焼肉|寿司|ラーメン|うどん|そば)/, '');
+        const coreName = normalizeForMatch(stripGenrePrefix(name));
+        const isMeaningful = (s) => s && s.length >= 2;
+
+        const nameTitleMatches = (titleStr, nameStr) => {
+          if (!titleStr || !nameStr) return false;
+          const t = normalizeForMatch(titleStr);
+          const n = normalizeForMatch(nameStr);
+          if (!isMeaningful(n)) return false;
+          return t.includes(n) || n.includes(t.split('-')[0].trim()) || t.includes(coreName);
+        };
+
+        // エリアマッチ判定（誤採用の更なる防止）
+        const areaMatches = (titleStr) => {
+          if (!titleStr || !locationHint) return true; // ヒント無ければスキップ
+          const t = normalizeForMatch(titleStr);
+          // エリア名から駅・区などのトークンを取り出して個別チェック
+          const tokens = [area, station]
+            .filter(Boolean)
+            .map(s => normalizeForMatch(s.replace(/(駅|都|府|県|区|市|町|丁目|\d)/g, '')))
+            .filter(s => s.length >= 2);
+          if (tokens.length === 0) return true;
+          return tokens.some(tok => t.includes(tok));
+        };
+
+        // 採用条件:
         // 1. URL形式が正しい
-        // 2. page_title に店名が含まれる（モデル自己申告）
-        // 3. groundingChunks に tabelog 関連が1件以上ある（実検索の証拠）
+        // 2. page_title が店名（または固有名詞部分）と一致
+        // 3. page_title がエリアとも整合（locationHintがある場合）
+        // 4. groundingChunks に tabelog 関連が1件以上 OR page_titleに「食べログ」を含む
         let tabelogUrl = null;
         if (tabelogModelUrl && tabelogUrlPattern.test(tabelogModelUrl)) {
-          const titleHasName = tabelogPageTitle &&
-            normalizeForMatch(tabelogPageTitle).includes(normalizedName);
+          const titleHasName = nameTitleMatches(tabelogPageTitle, name);
+          const titleHasArea = areaMatches(tabelogPageTitle);
           const hasTabelogGrounding = callB.groundingChunks.some(c =>
             c.web?.uri?.includes('tabelog') ||
             c.web?.title?.toLowerCase().includes('tabelog') ||
             c.web?.title?.includes('食べログ')
-          );
+          ) || (tabelogPageTitle && tabelogPageTitle.includes('食べログ'));
 
-          if (titleHasName && hasTabelogGrounding) {
+          if (titleHasName && titleHasArea && hasTabelogGrounding) {
             tabelogUrl = tabelogModelUrl;
-            console.log('✅ 食べログURL採用:', tabelogUrl);
+            console.log('✅ 食べログURL採用:', tabelogUrl, '(title:', tabelogPageTitle, ')');
           } else {
             console.warn('❌ 食べログURL却下:', {
               url: tabelogModelUrl,
               titleHasName,
+              titleHasArea,
               hasTabelogGrounding,
               page_title: tabelogPageTitle,
+              storeName: name,
+              coreName,
             });
           }
         }
