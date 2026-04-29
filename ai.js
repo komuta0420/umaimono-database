@@ -523,6 +523,16 @@ JSONのみを返してください。
           result = {};
         }
 
+        // 診断ログ（食べログURL周りで問題が起きた時に原因特定するため）
+        console.group(`🔍 食べログURL検証 - 「${name}」`);
+        console.log('入力 name:', name);
+        console.log('入力 search_query:', search_query);
+        console.log('入力 area:', area, '/ station:', station);
+        console.log('モデル返却 url_tabelog:', result.url_tabelog);
+        console.log('groundingChunks 件数:', groundingChunks.length);
+        console.table(groundingChunks.map(c => ({ uri: c.web?.uri, title: c.web?.title })));
+        console.groupEnd();
+
         // ── 食べログURL検証: groundingChunksのtitleで店名照合 ──
         const normalizeForMatch = (s) => s.replace(/[\s・\-_　【】「」『』()（）。、,.!?！？]/g, '').toLowerCase();
         const normalizedName = normalizeForMatch(name);
