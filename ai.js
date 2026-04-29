@@ -515,9 +515,17 @@ JSONのみを返してください。
 
 # 出力形式 (JSON)
 {
-  "url_tabelog": "tabelog.com の店舗詳細URL（検索結果に実在するもののみ）",
+  "url_tabelog": "tabelog.com の店舗詳細URL（必ず https://tabelog.com/ で始まる本物のURL）",
   "page_title": "検索結果に表示されていた食べログページの完全なタイトル（店名・エリア・ジャンル等を含むもの）"
 }
+
+# URL形式の絶対ルール（厳守）
+- url_tabelog は **必ず https://tabelog.com/ で始まる実URL** を記入すること
+- 食べログ店舗詳細URLの形式: https://tabelog.com/{都道府県}/{エリアコード}/{エリアコード}/{店舗ID}/
+  - 例: https://tabelog.com/tokyo/A1319/A131905/13003251/
+- **vertexaisearch.cloud.google.com / grounding-api-redirect / google.com 等のリダイレクトURLは絶対に書かない**
+  - これらは検索エンジン内部の中間URLで、本物の食べログURLではない
+  - リダイレクト先の実URLが分からない場合は url_tabelog を null にする
 
 # 採用基準（柔軟）
 - 食べログでは入力時の店名と表記が部分的に異なる場合がある
@@ -525,7 +533,7 @@ JSONのみを返してください。
 - エリア（${locationHint || area || '不明'}）と一致するページであれば確実
 - **別エリア・別住所の同名店は絶対に採用しない**
 
-# 絶対ルール
+# その他のルール
 - 必ず google_search ツールで実検索を実行すること
 - 記憶や学習データだけからURLを生成することは厳禁
 - 「周辺のお店」「ランキング」「関連店舗」のリンクは絶対に採用しない（それらは別店舗）
@@ -627,6 +635,10 @@ JSONのみを返してください。
         // 3. page_title がエリアとも整合（locationHintがある場合）
         // 4. groundingChunks に tabelog 関連が1件以上 OR page_titleに「食べログ」を含む
         let tabelogUrl = null;
+        // リダイレクトURLが返ってきた場合は明示的に警告（プロンプト改善ヒント）
+        if (tabelogModelUrl && /(vertexaisearch|grounding-api-redirect|google\.com\/url)/.test(tabelogModelUrl)) {
+          console.warn('⚠️ モデルがリダイレクトURLを返却（tabelog.com の実URLではない）:', tabelogModelUrl);
+        }
         if (tabelogModelUrl && tabelogUrlPattern.test(tabelogModelUrl)) {
           const titleHasName = nameTitleMatches(tabelogPageTitle, name);
           const titleHasArea = areaMatches(tabelogPageTitle);
