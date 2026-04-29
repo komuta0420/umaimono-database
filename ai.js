@@ -99,21 +99,16 @@ const AI = (() => {
         }
       }
 
-      // groundingMetadata からURLを直接抽出（Geminiのテキスト生成に頼らない）
-      const chunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
-      const groundingUrls = chunks.map(c => c.web?.uri).filter(Boolean);
+      // groundingChunks をそのまま返す（URL検証は呼び出し元で店名照合して行う）
+      const groundingChunks = data.candidates?.[0]?.groundingMetadata?.groundingChunks || [];
+
+      // Instagram / 公式サイトURLは店名照合不要なのでここで補完
+      const groundingUrls = groundingChunks.map(c => c.web?.uri).filter(Boolean);
       if (groundingUrls.length > 0 && typeof result === 'object' && !result.raw) {
-        // 食べログURL: Geminiが返さなかった場合、groundingChunksから補完
-        if (!result.url_tabelog) {
-          const tabelogUrl = groundingUrls.find(u => /tabelog\.com\/[a-z]+\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[0-9]+/.test(u));
-          if (tabelogUrl) result.url_tabelog = tabelogUrl;
-        }
-        // Instagram URL: 同様に補完
         if (!result.url_instagram) {
           const igUrl = groundingUrls.find(u => /instagram\.com\/[a-zA-Z0-9_.]+\/?$/.test(u));
           if (igUrl) result.url_instagram = igUrl;
         }
-        // 公式サイトURL: tabelog/instagram以外のURLで補完
         if (!result.url_official) {
           const officialUrl = groundingUrls.find(u =>
             !u.includes('tabelog.com') &&
@@ -127,7 +122,7 @@ const AI = (() => {
         }
       }
 
-      return result;
+      return { result, groundingChunks };
     },
   };
 
@@ -388,9 +383,10 @@ JSONのみを返してください。余分なテキストは不要です。
       let result;
       if (CONFIG.USE_GEMINI_GROUNDING && provider === GEMINI) {
         // Gemini grounding モード: Google検索を使って1回で候補を取得
-        result = await GEMINI.requestWithSearch(
+        const searchRes = await GEMINI.requestWithSearch(
           `「${storeName}」${stationHint ? `（${stationHint.trim()}）` : ''}という店をGoogle検索して、候補を最大5件JSON配列で返してください。\n\n` + extractPrompt
         );
+        result = searchRes.result;
       } else if (provider === GEMINI) {
         // Jina Search + Flash Lite モード（USE_GEMINI_GROUNDING=false 時）
         result = await requestJinaWithFree(searchQuery, extractPrompt);
@@ -517,21 +513,74 @@ ${locationHint ? `\n# 重要: 必ず「${locationHint}」にある「${name}」�
 
 JSONのみを返してください。
 `;
+        let groundingChunks = [];
         try {
-          result = await GEMINI.requestWithSearch(mainPrompt);
+          const searchRes = await GEMINI.requestWithSearch(mainPrompt);
+          result = searchRes.result;
+          groundingChunks = searchRes.groundingChunks;
         } catch (e) {
           console.error('店舗情報検索エラー:', e);
           result = {};
         }
 
-        // ── URL妥当性チェック: 食べログURLが正しい形式か検証 ──
-        if (result.url_tabelog) {
-          const tabelogValid = /^https?:\/\/tabelog\.com\/[a-z]+\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[0-9]+\/?/.test(result.url_tabelog);
-          if (!tabelogValid) {
-            console.warn('食べログURL形式不正、除外:', result.url_tabelog);
-            result.url_tabelog = null;
+        // ── 食べログURL検証: groundingChunksのtitleで店名照合 ──
+        const normalizeForMatch = (s) => s.replace(/[\s・\-_　【】「」『』()（）。、,.!?！？]/g, '').toLowerCase();
+        const normalizedName = normalizeForMatch(name);
+        const tabelogPattern = /^https?:\/\/tabelog\.com\/[a-z]+\/[A-Za-z0-9]+\/[A-Za-z0-9]+\/[0-9]+\/?/;
+
+        // URLのpathname部分だけで比較（クエリ・末尾スラッシュ差を吸収）
+        const tabelogPath = (url) => {
+          try {
+            const u = new URL(url);
+            return u.hostname + u.pathname.replace(/\/$/, '');
+          } catch { return url; }
+        };
+
+        // 食べログのchunksを抽出（URI形式が正しいもののみ）
+        const tabelogChunks = groundingChunks.filter(c =>
+          c.web?.uri && tabelogPattern.test(c.web.uri) && c.web?.title
+        );
+
+        // titleに店名が含まれるchunkを取得
+        const nameMatchedChunks = tabelogChunks.filter(c =>
+          normalizeForMatch(c.web.title).includes(normalizedName)
+        );
+
+        // 店名が短すぎる（2文字未満）と部分一致が誤爆しやすいので、その場合は検証を強化
+        const isStrictName = normalizedName.length >= 2;
+
+        // 採用ロジック（厳格）:
+        // 1. モデルが返したURLが nameMatchedChunks に含まれる → 採用
+        // 2. それ以外 → nameMatchedChunks の最初を採用（モデル応答は捨てる）
+        // 3. nameMatchedChunks が空 → null
+        let adoptedUrl = null;
+        if (isStrictName && nameMatchedChunks.length > 0) {
+          if (result.url_tabelog && tabelogPattern.test(result.url_tabelog)) {
+            const modelPath = tabelogPath(result.url_tabelog);
+            const matched = nameMatchedChunks.find(c => tabelogPath(c.web.uri) === modelPath);
+            if (matched) {
+              adoptedUrl = matched.web.uri;
+            } else {
+              console.warn(`モデル返却の食べログURLはchunksに無い or 店名不一致、chunksから採用:`, {
+                model: result.url_tabelog,
+                adopted: nameMatchedChunks[0].web.uri,
+                title: nameMatchedChunks[0].web.title,
+              });
+              adoptedUrl = nameMatchedChunks[0].web.uri;
+            }
+          } else {
+            adoptedUrl = nameMatchedChunks[0].web.uri;
+            console.log('groundingChunksから食べログURL採用:', nameMatchedChunks[0].web.title);
           }
+        } else if (result.url_tabelog) {
+          // 検証できない（chunksにtabelogが無い等）場合は安全側に倒してnull
+          console.warn(`食べログURL検証不可（chunks内に店名一致無し）、除外:`, {
+            url: result.url_tabelog,
+            chunkTitles: tabelogChunks.map(c => c.web.title),
+            storeName: name,
+          });
         }
+        result.url_tabelog = adoptedUrl;
         // Instagram URLの形式チェック
         if (result.url_instagram && !/^https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/.test(result.url_instagram)) {
           console.warn('Instagram URL形式不正、除外:', result.url_instagram);
@@ -567,7 +616,8 @@ JSONのみを返してください。
 JSONのみを返してください。
 `;
           try {
-            const snsResult = await GEMINI.requestWithSearch(snsPrompt);
+            const snsSearchRes = await GEMINI.requestWithSearch(snsPrompt);
+            const snsResult = snsSearchRes.result;
             // Instagram URL形式チェック
             if (snsResult.url_instagram && !/^https?:\/\/(www\.)?instagram\.com\/[a-zA-Z0-9_.]+\/?/.test(snsResult.url_instagram)) {
               console.warn('Call 2: Instagram URL形式不正、除外:', snsResult.url_instagram);
