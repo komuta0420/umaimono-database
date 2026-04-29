@@ -520,11 +520,10 @@ JSONのみを返してください。
 }
 
 # 採用基準（柔軟）
-- 食べログでは「ジャンルプレフィックス」（例: 名曲喫茶、立ち飲み等）が省略されていることがある
-- 店名の主要部分（固有名詞部分）がタイトルに含まれていれば同じ店と判断してよい
-  - 例: 入力「名曲喫茶ヴィオロン」、食べログタイトル「ヴィオロン (VIOLON)」 → 同じ店として url_tabelog を返す
-- エリア（${locationHint || area || '不明'}）と一致するページであれば、より確実
-- 別エリアの同名店は採用しない
+- 食べログでは入力時の店名と表記が部分的に異なる場合がある
+  - 例: 入力「名曲喫茶ヴィオロン」、食べログ「ヴィオロン (VIOLON)」→ 同じ店として url_tabelog を返してよい
+- エリア（${locationHint || area || '不明'}）と一致するページであれば確実
+- **別エリア・別住所の同名店は絶対に採用しない**
 
 # 絶対ルール
 - 必ず google_search ツールで実検索を実行すること
@@ -587,20 +586,26 @@ JSONのみを返してください。
         console.table(callB.groundingChunks.map(c => ({ uri: c.web?.uri, title: c.web?.title })));
         console.groupEnd();
 
-        // 名前マッチ判定（柔軟）
-        // - 店名のジャンル接頭辞（名曲喫茶・立ち飲み・カフェ・喫茶店 等）を除いた固有名詞部分でマッチ
-        // - 双方向に部分一致でOK（title⊂name または name⊂title）
-        const stripGenrePrefix = (s) =>
-          s.replace(/^(名曲喫茶|立ち飲み|立飲み|大衆|町中華|和食|洋食|喫茶店|カフェ|レストラン|居酒屋|バー|焼肉|寿司|ラーメン|うどん|そば)/, '');
-        const coreName = normalizeForMatch(stripGenrePrefix(name));
+        // 名前マッチ判定（接頭辞除去なし・タイトルから店名トークン抽出方式）
+        // 食べログtitle形式: "店名 (英語名) - エリア/ジャンル - 食べログ"
+        // 最初の " - " より前を店名セグメントとし、英語並記の括弧も剥がす
+        const extractTitleStoreName = (titleStr) => {
+          if (!titleStr) return '';
+          const firstSeg = titleStr.split(/\s[-–]\s/)[0];
+          return firstSeg.replace(/[（(][^）)]*[）)]/g, '').trim();
+        };
         const isMeaningful = (s) => s && s.length >= 2;
 
+        // 双方向部分一致: name⊂title または titleStoreName⊂name
         const nameTitleMatches = (titleStr, nameStr) => {
           if (!titleStr || !nameStr) return false;
           const t = normalizeForMatch(titleStr);
           const n = normalizeForMatch(nameStr);
           if (!isMeaningful(n)) return false;
-          return t.includes(n) || n.includes(t.split('-')[0].trim()) || t.includes(coreName);
+          if (t.includes(n)) return true;
+          const titleStore = normalizeForMatch(extractTitleStoreName(titleStr));
+          if (isMeaningful(titleStore) && n.includes(titleStore)) return true;
+          return false;
         };
 
         // エリアマッチ判定（誤採用の更なる防止）
@@ -642,7 +647,7 @@ JSONのみを返してください。
               hasTabelogGrounding,
               page_title: tabelogPageTitle,
               storeName: name,
-              coreName,
+              titleStoreName: extractTitleStoreName(tabelogPageTitle),
             });
           }
         }
