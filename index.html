@@ -1804,6 +1804,17 @@ async function onScreenshotFile(file) {
         Object.keys(details).forEach((key) => {
           if (!result[key] && details[key]) result[key] = details[key];
         });
+        // URL系は details の検証済み結果を優先（null の場合は明示的にクリア）
+        ['url_tabelog', 'url_instagram', 'url_official'].forEach((key) => {
+          if (Object.prototype.hasOwnProperty.call(details, key)) {
+            result[key] = details[key];
+          }
+        });
+        console.log('📝 form投入直前:', {
+          url_tabelog: result.url_tabelog,
+          url_instagram: result.url_instagram,
+          url_official: result.url_official,
+        });
       } catch (e) {
         console.warn('詳細情報の補完に失敗しました:', e);
       }

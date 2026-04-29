@@ -684,6 +684,11 @@ JSONのみを返してください。
       } else {
         result = await provider.request(extractPrompt);
       }
+      console.log('🏁 enrichStoreData 最終返却:', {
+        url_tabelog: result?.url_tabelog,
+        url_instagram: result?.url_instagram,
+        url_official: result?.url_official,
+      });
       return result;
     } catch (e) {
       console.error('詳細情報補完エラー:', e);
