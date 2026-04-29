@@ -1000,6 +1000,8 @@
 let currentStoreId = null;  // 詳細表示中の店舗ID
 let formMode = 'new';       // 'new' | 'edit'
 let formPrevScreen = 'list';
+const expandedGenreIds = new Set();  // 一覧で展開中のジャンルID
+let listScrollY = 0;                  // 一覧スクロール位置の保存
 let selectedWantLevel = 0;
 let reviewPhotoFiles = [];    // 新規追加ファイル
 let reviewExistingIds = [];   // 既存ファイルID
@@ -1213,7 +1215,12 @@ function showScreen(name) {
   document.querySelectorAll('.screen').forEach((s) => s.classList.remove('active'));
   document.getElementById(`screen-${name}`).classList.add('active');
 
-  if (name === 'list') renderList();
+  if (name === 'list') {
+    renderList().then(() => {
+      // 一覧に戻ったときのスクロール位置を復元
+      window.scrollTo(0, listScrollY);
+    });
+  }
   if (name === 'genres') renderGenreList();
   if (name === 'register') resetRegisterFlow();
 }
@@ -1253,6 +1260,10 @@ async function renderList() {
     accordionEl.style.display = 'block';
     const groups = groupByGenre(filteredStores);
     accordionEl.innerHTML = groups.map((g) => renderAccordionGroup(g)).join('');
+    // 展開状態を復元
+    accordionEl.querySelectorAll('.accordion-group').forEach((el) => {
+      if (expandedGenreIds.has(el.dataset.genreId)) el.classList.add('open');
+    });
   }
 }
 
@@ -1299,12 +1310,23 @@ function renderFlatRow(store) {
 
 function toggleAccordion(groupEl) {
   groupEl.classList.toggle('open');
+  const genreId = groupEl.dataset.genreId;
+  if (!genreId) return;
+  if (groupEl.classList.contains('open')) {
+    expandedGenreIds.add(genreId);
+  } else {
+    expandedGenreIds.delete(genreId);
+  }
 }
 
 // ────────────────────────────────────────
 // 詳細画面
 // ────────────────────────────────────────
 function showDetail(storeId) {
+  // 一覧に戻ったときのスクロール位置を保存
+  if (document.getElementById('screen-list').classList.contains('active')) {
+    listScrollY = window.scrollY || document.documentElement.scrollTop;
+  }
   currentStoreId = storeId;
   const store = getStore(storeId);
   if (!store) return;
