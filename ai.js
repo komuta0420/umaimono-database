@@ -7,7 +7,7 @@ const AI = (() => {
   // ────────────────────────────────────────
   const GEMINI = {
     API_BASE: 'https://generativelanguage.googleapis.com/v1beta',
-    MODEL: 'gemini-2.5-flash', // 20RPD, 検索は無料だと500RPD(先に20RPD制限かかる)
+    MODEL: 'gemini-3.5-flash', // 20RPD, 検索は無料だと500RPD(先に20RPD制限かかる)
     // MODEL: 'gemini-2.5-flash-lite',  // 20RPD, 検索は無料だと500RPD(先に20RPD制限かかる)
     // MODEL: 'gemini-3-flash-preview', // 無料だと検索機能✕　
     // MODEL: 'gemini-3.1-flash-lite-previe', // 無料だと検索機能✕　https://ai.google.dev/gemini-api/docs/pricing?hl=ja
@@ -33,7 +33,7 @@ const AI = (() => {
       };
 
       const res = await fetch(
-        `${this.API_BASE}/models/gemini-3.1-flash-lite-preview:generateContent?key=${CONFIG.GEMINI_API_KEY_FREE}`,
+        `${this.API_BASE}/models/gemini-3.1-flash-lite:generateContent?key=${CONFIG.GEMINI_API_KEY_FREE}`,
         {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
